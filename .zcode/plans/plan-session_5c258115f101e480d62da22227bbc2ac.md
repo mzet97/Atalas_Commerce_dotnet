@@ -1,77 +1,78 @@
-# Plano — Documentação SDD do Atlas Commerce .NET 10 + MAF (execução do M0)
+# Plano — Implementar tudo que falta (fechar M4 → M5 → M6 → M7 → M8 → M9 → M11)
 
-## Contexto
+Base: contrato mestre + `PLAN-docs-completas-implementacao.md` (Estágio B) + digest das specs 005–011 (todas DRAFT → refinar para READY ao entrar em cada milestone). Regras permanentes: SDD evidence-first (PASS só com EVD real, relatório §16 por gate, commits por fatia), proibições do contrato (sem Python/SK/LangGraph), invariantes INV-* intocáveis, hosts dev como background tasks.
 
-Todos os 18 arquivos `.md` do handoff foram lidos integralmente (prompt mestre 830 linhas, blueprint consolidado, 8 docs de discovery, 5 docs `references/dotnet`, READMEs), além dos 15 diagramas e do manifesto SHA-256 (32/32 arquivos conferem). Estado atual: `NO_REPO`, sem artefatos SDD. O contrato mestre (§11, §17, §21) define exatamente o que o M0 deve produzir — este plano executa isso, **sem scaffolding de código** (sem `dotnet new`, sem Docker, sem gasto externo).
+## FASE 0 — Fechar M4/SPEC-004 (~1 sessão)
+1. Verificador de cadeia como teste xUnit (append N registros, mutar 1 no Mongo, assert `brokenAtSeq`).
+2. Req.5: paginação/filtro server-side nas listagens (`/modules/audit`, approvals, positions da view PG).
+3. Req.6: `GET /modules/ops/overview` — outbox age por owner, contagem de sagas por estado (conciliação), DLQ depth como "N/A até M6".
+4. Runbook de revogação de emergência + `GET /modules/audit/export` (JSON/CSV) para auditor.
+5. ADR-0012 fechada como NOT_ADOPTED (sem MediatR/MassTransit/FluentAssertions — dispatch manual + Kafka nativo + xUnit). ADR-0010 idem (Aspire não adotado).
+6. Relatório M4 §16 final + EVD-004-002 + gate **M4 PASS**.
 
-**Decisões aplicadas** (perguntas sem resposta; usando as recomendadas): coordenação SDD em nova pasta **`atlas-workspace-dotnet/`** (árvore-alvo §5.1 do prompt mestre); **`git init`** do repo auxiliar de coordenação (permitido pelo §11.1; `.gitignore` exclui os 3 repos futuros); escopo = **M0 completo + SPEC-001 proposta** (SPEC-002..011 ficam como backlog no `roadmap.md`). Pacote de handoff permanece **intocado** (provenança).
+## FASE EXTERNA (proprietário, paralela)
+`git push` dos 3 repos + secrets do GitHub Actions — fecha o "CI verde" do M1 e ativa CI para todos os gates seguintes (workflows já existem nos templates).
 
-## 1. Estrutura a criar
+## FASE 1 — M5/SPEC-005 Storefront UX, busca, i18n + Playwright (~3–4 sessões)
+Spec DRAFT→READY. A maior fatia nova (a UI de carrinho/checkout não existe ainda).
+1. Vitrine: busca com facets/sugestões sobre `catalog_product_search` (GIN) + PDP lendo views PG (com revalidação no owner no checkout — INV-CQRS-001).
+2. **Carrinho + checkout UI** conectados ao Checkout.Api real (POST /quotes, POST /checkout) com estados loading/empty/error.
+3. i18n pt-BR/en-US/es-ES × mercados BR/US/UE: dicionários por namespace, locale/market/moeda INDEPENDENTES (INV-I18N-001), fallback CAT-01 (produto sem tradução não quebra), FX só indicativa.
+4. SEO: `generateMetadata`, hreflang/canonical/sitemap/OG.
+5. **Playwright E2E**: jornada de compra completa nos 3 idiomas + falha controlada (PSP DECLINED) — fecha o E2E de browser herdado do M3.
+6. a11y (axe, WCAG 2.2 AA no CI) + CWV medidos (LCP/CLS/INP) com orçamentos e limitações explícitas. Gate §16 M5.
+(Redis cache-aside pode entrar aqui na PDP/busca — primeira uso real do Redis no pipeline.)
 
-```
-atlas-workspace-dotnet/                  # repo auxiliar de coordenação (git)
-├── README.md                            # propósito, layout, como o SDD funciona, precedência
-├── .gitignore                           # exclui atlas-storefront-dotnet/ atlas-control-dotnet/ atlas-platform-contracts-dotnet/
-├── sdd/
-│   ├── prompt.md                        # cópia do PROMPT_MASTER + cabeçalho de provenança (hash SHA-256 d1247f04…)
-│   ├── audit.md                         # inventário real, baseline de ambiente, classificação LEGACY/CONFIRMED, divergências
-│   ├── source-manifest.md               # 32 fontes: caminho, tamanho, SHA-256, classificação, data de leitura
-│   ├── glossary.md                      # linguagem ubíqua (PT↔EN, tipos de ID, termos de domínio)
-│   ├── requirements.md                  # registro de IDs: REQ-*/INV-*/NFR-*/SEC-*/AI-* (ver taxonomia §3)
-│   ├── roadmap.md                       # M0–M11 com gates, dependências, mapeamento SPEC-000..011, status
-│   ├── decisions-open.md                # decisões OPEN + impacto + alternativa segura
-│   ├── risks.md                         # matriz de riscos (probabilidade/impacto/mitigação)
-│   ├── traceability.md                  # matriz REQ → SPEC → TASK → código → TEST → EVD
-│   ├── progress.md                      # diário de execução (entrada M0)
-│   ├── reports/M0-report.md             # relatório final no formato §16 + checklist §21
-│   └── evidence/
-│       ├── EVD-000-001-source-integrity.md   # script + saída da verificação 32/32
-│       └── EVD-000-002-environment-baseline.md # versões de dotnet/node/pnpm/docker/kubectl/helm/buf/aspire ou ABSENT
-├── specs/
-│   ├── 000-business-discovery/          # 9 arquivos: README, audit, spec, design, tasks,
-│   │   │                                #   acceptance.feature, traceability, evidence, risks
-│   │   └── …                            #   (conteúdo: bounded contexts, ownership, agregados,
-│   │                                    #    invariantes, UC-001..011, ER/Mongo/PG, cenários críticos)
-│   └── 001-platform-foundation/         # rascunho PROPOSTO (gate M0 exige "SPEC-001 proposta"):
-│       └── README, spec, design, tasks  #   3 repos, templates dotnet new, CI, Compose, Keycloak, OTel
-└── architecture/
-    ├── decisions/ADR-0001..ADR-0015-*.md # 15 ADRs PROPOSED (§19 do prompt mestre)
-    ├── diagrams/                        # 27 fontes editáveis (ver §4) + README.md de provenança/diffs
-    └── threat-model.md                  # STRIDE por contexto + ameaças específicas de IA/MAF
-```
+## FASE 2 — M6/SPEC-006 Fulfillment, Returns, Notifications (~3 sessões)
+Spec→READY. 
+1. `FulfillmentOrder` (evento `OrderConfirmed` → state machine CREATED→…→DELIVERED) + multi-remessa (`ShipmentLine`).
+2. **Release físico de estoque** no cancelamento via gRPC real (fecha limitação herdada do M3/M4 — port deixa de ser stub).
+3. Carrier fake determinístico (quote/label/tracking/POD) documentado como simulado.
+4. RMA (janela por market) + **refund four-eyes** (REQ-RET-001): `RefundRequested` → Payments idempotente → PSP cenário REFUND; refund parcial; logística reversa ≠ financeira.
+5. Notificações: task bridge Kafka→RabbitMQ (ADR-0004), quorum queues, manual ack, retry/backoff, DLQ `notifications.dlq`, dedup por `notification_key`, consentimento/opt-out (REQ-CST-001), templates i18n.
+6. Fault tests: broker restart, crash pós-ack parcial, eventos fora de ordem rejeitados. Runbook DLQ/replay. Gate §16 M6.
 
-~65 arquivos no total.
+## FASE 3 — M7/SPEC-007 Assistente MAF (~3–4 sessões, risco mais alto)
+0. **SPIKE PRIMEIRO (ADR-0008)**: Ollama local + `IChatClient` + tool calling com MAF 1.26.0 pinado. Se falhar → BLOCKED documentado, fake em CI, sem alegar IA funcional (decisão do proprietário: Ollama zero-custo).
+1. Scaffolding `AI/ShoppingAssistant` (Api/Domain/Application/Workflows/Agents/Tools/Providers/Memory/Safety/Evaluation/Infrastructure) + adapter Ollama + fake determinístico p/ CI.
+2. 8 tools read-only allowlist EM CÓDIGO (SearchCatalog…ProposeCartChange inerte), grounding com `quoted_at`/TTL — zero invenção de preço/estoque.
+3. Workflow F2 tipado: Intent→Search→Compare→Clarify?→Recommend→ProposeCart? com quotas (tokens/tempo/recursão) + circuit breaker; nunca orquestra saga/checkout.
+4. Consent artifact (ADR-0009: subject+nonce+TTL+hash canônico) → única mutação via `ApplyApprovedCartChange` no Cart owner; token p/ payload diverso = rejeitado.
+5. Guardrails injection (casos `inj-desc-01`/`inj-review-02` do dataset) — outputs de tools = untrusted; fallback para busca convencional dentro do budget de latência.
+6. **Eval com Ollama real** (dataset `eval-dataset.md` já existe): tool choice ≥0.9, clarify ≥0.8, injection bypass=0, hallucination=0, approval bypass=0; métricas REQ-AI-008; versão do modelo registrada. Gate §16 M7.
 
-## 2. Conteúdo-chave por artefato
+## FASE 4 — M8/SPEC-008 K8s on-prem (~2–3 sessões)
+Pré-requisito: instalar kubectl/helm/skaffold. Ambiente: **kind local como cluster não-prod por padrão**; cluster on-prem real se o proprietário disponibilizar.
+1. Charts Helm por repo (versionados, values por env) + `helm lint`/`template` no CI; Skaffold dev.
+2. Hardening: NetworkPolicy deny-by-default, non-root/seccomp, probes, graceful shutdown, PDB/quotas.
+3. HPA (CPU) + KEDA (consumer lag) escalando sob carga sintética; zero segredo em Git (sealed-secrets).
+4. Backups + **restore drill** com checkout smoke verificável pós-restore; rolling+rollback gravados em vídeo/log. Gate §16 M8.
 
-**`sdd/audit.md`** — inventário do workspace (`NO_REPO`), tabela de classificação de statements (`CONFIRMED/PROPOSED/OPEN/DEFERRED/LEGACY`), ambiente de ferramentas (baseline do §21), e **divergências encontradas** na auditoria: (a) duas taxonomias de invariantes (blueprint `INV-001..012` × prompt mestre `INV-STOCK-001…`) — reconciliadas em `requirements.md`; (b) blueprint doc 06/07 referem Python/FastAPI/LangGraph → marcados `LEGACY/NOT_APPLICABLE_TO_DOTNET`.
+## FASE 5 — M9/SPEC-009 Benchmark (~2–3 sessões; runs longos em background)
+Plano L0–L4 já existe (anexo normativo). Gates congelados ANTES de cada run; carga aberta k6; mix 80/12/5/2/0.7/0.3; dataset 10^6 SKUs gerado e versionado.
+1. Harness k6 + geração do dataset.
+2. **L0** (50 RPS/1 checkout·s, 10 min — prova correção) e **L1** (1000/20, 30 min + soak 2h — baseline p50/95/99) com hardware fingerprint + artefatos `results/<run_id>/`.
+3. **L2** (10k/200, 1h + spike 10×) em kind com HPA; invariantes testadas DURANTE o run (oversell=0, duplicate_paid_order=0); hot-SKU contention run; réplicas×caches com IC 95%.
+4. Relatório final honesto (limitações explícitas) + congelar SLOs por ADR (fecha OPEN-05). **L3 conforme ambiente; L4 nunca alegado.** Gate §16 M9.
 
-**`sdd/requirements.md`** — registro canônico de IDs (imutáveis após publicação):
-- **Invariantes canônicas (15)**: taxonomia do prompt mestre como autoridade — `INV-STOCK-001/002`, `INV-ORDER-001/002`, `INV-MONEY-001`, `INV-PAYMENT-001`, `INV-CQRS-001`, `INV-SEC-001`, `INV-ADMIN-001`, `INV-AI-001` — **estendidas** com `INV-STOCK-003` (idempotência de ReserveStock, alias INV-002 bp), `INV-QUOTE-001` (bp INV-004), `INV-EVT-001` (bp INV-010), `INV-PII-001` (bp INV-011), `INV-I18N-001` (bp INV-008), incluindo **tabela de mapeamento blueprint↔canônico**.
-- **REQ por contexto**: `REQ-CAT/PIM/OFF/INV/DSC/CRT/CHK/ORD/PAY/FFM/RET/CST/NOT/AI/ADM/IAM/PLT-{nnn}` (≈60–80 requisitos, cada um com fonte e UC ligados).
-- **NFR** de `05-NFR-E-ESCALA` (SLOs propostos, L0–L4): `NFR-PERF/REL/OBS/SEC/SCALE-{nnn}`. **SEC-*** do §7 do prompt mestre; **AI-*** do §9 + doc 08.
+## FASE 6 — M11/SPEC-011 Portfólio internacional (~1–2 sessões)
+1. ADRs em EN + trade-off essays (monolith vs microservices, CQRS poliglota, at-least-once+idempotência, consent boundary da IA, saga vs 2PC).
+2. READMEs quickstart nos 3 repos + demo scripts + vídeos (Playwright trace: checkout com falha controlada, admin→projeção, assistente com consent).
+3. Matriz **projetado×implementado×medido** com links EVD; postmortems dos ~20 bugs reais do projeto; seção obrigatória "o que NÃO está implementado/medido".
+4. Gate: **clone→run→verify por avaliador externo** (proprietário ou terceiro).
 
-**15 ADRs `PROPOSED`** (títulos do §19): 0001 ownership/Admin→owner (absorve ADR-001/006 do blueprint), 0002 Mongo write/PG read, 0003 outbox+CDC+Kafka, 0004 RabbitMQ tasks vs Kafka events, 0005 gRPC schema-first+Buf, 0006 checkout saga/compensações, 0007 Keycloak RBAC+ABAC+four-eyes, 0008 MAF+IChatClient, 0009 consent boundary da IA, 0010 Aspire opcional × Compose/Helm, 0011 EF Core × Dapper nas projeções, 0012 estratégia mediator/messaging/licenças (MassTransit/MediatR/FluentAssertions), 0013 granularidade de serviços, 0014 gateway/BFF+rate limiting, 0015 políticas de tools/checkpoint/PII do MAF. Cada ADR: contexto, ≥2 alternativas, proposta, trade-offs, modos de falha, custo, rollback, fontes, status `PROPOSED`.
+## Transversal contínuo
+- `traceability.md` global atualizado ao fim de cada milestone (item A7 do plano).
+- OPEN-02/03 (backorder, emissão fiscal) permanecem fora do MVP — só com decisão do proprietário.
+- M10 (marketplace 3P) permanece **DEFERRED** (gatilho: decisão + ADR tenancy).
+- Cada gate: SPEC→READY antes, relatório §16 + EVD + commit + atualização AGENTS.md/memória no fim.
 
-**`specs/000-business-discovery/spec.md`** — os 16 bounded contexts com ownership único, agregados e limites transacionais, invariantes, UC-001..011 com fluxos alternativos, escopo 1P e fases 2/3. **`design.md`** — consolidação .NET: mapa de contextos com ACL, write model Mongo (coleções + outbox), read model PG (10 projeções), pipeline CQRS, comunicação (HTTP/gRPC/Kafka/Rabbit) e tradução LEGACY→.NET (tabela de conversões do `00-ADAPTATION`). **`tasks.md`** — TASK-000-001..N com comando de aceite (ex.: "revisar diagrama X sintaxe Y"). **`acceptance.feature`** — ≥8 cenários Gherkin críticos: contenda pela última unidade (UC003-T01); publicação via Admin→owner→projeção; webhook duplicado idempotente (T02/T05); saga reconcilia após falha (T03); revalidação no owner com projeção atrasada (T04); four-eyes self-approval negado; prompt injection não amplia escopo da IA; isolamento de sessões MAF. Cada `Scenario` ganha `TEST-ID` pendente.
+## Riscos e mitigação
+| Risco | Mitigação |
+|---|---|
+| ADR-0008 BLOCKED (modelo sem tool calling) | Spike ANTES da spec READY; candidatos: qwen2.5/llama3.1; fallback busca convencional já é requisito |
+| M8 sem cluster real | kind local com limitação honesta no relatório |
+| M9 hardware insuficiente p/ L2/L3 | Gates congelados antes do run; L3 opcional; resultados não atingidos documentados |
+| CI externo não feito | Fases continuam com CI local (dotnet test); CI remoto fecha quando o push acontecer |
 
-**Diagramas (27)**: copiar os 15 originais como cópias de trabalho (procedência registrada; originais intactos no handoff) — atualizar rótulos stack-específicos (FastAPI→ASP.NET Core 10 em `09/10`; ownership+ACL em `00`; VOs anotados em `06/07`). Autorar **12 novos**: `12-state-payment-intent`, `13-state-reservation`, `14-state-approval`, `15-sequence-admin-publish`, `16-sequence-concurrent-reservation`, `17-sequence-refund`, `18-sequence-projection-rebuild`, `19-er-ai-assistant` (Conversation/ToolInvocation/Consent/Proposal), `C4-01-context`, `C4-02-container`, `20-deployment-compose`, `21-deployment-k8s`.
-
-## 3. Ordem de execução
-
-1. `atlas-workspace-dotnet/` + `git init` + README + .gitignore
-2. `sdd/prompt.md` (cópia+provenança), `source-manifest.md`, `audit.md` → coletar baseline de ambiente (EVD-000-002)
-3. `glossary.md` + `requirements.md` (reconciliação das invariantes)
-4. 15 ADRs + `decisions-open.md` + `risks.md`
-5. Diagramas (15 cópias atualizadas + 12 novos) + `threat-model.md` + `diagrams/README.md`
-6. `specs/000-business-discovery/` completo (9 arquivos)
-7. `specs/001-platform-foundation/` rascunho (4 arquivos)
-8. `roadmap.md` + `traceability.md` + `progress.md`
-9. `evidence/` (EVD-000-001 re-executando a verificação SHA-256; EVD-000-002) + `reports/M0-report.md`
-10. Validação final: checklist §21 item a item; re-verificar hashes do handoff (prova de não-modificação); commits pequenos; atualizar `AGENTS.md` (estado → M0 concluído) e memória do projeto
-
-## 4. Verificação e limites
-
-- **Verificação**: integridade SHA-256 re-executada e anexada como EVD; checagens de consistência (toda INV tem REQ; todo UC crítico tem cenário; todo milestone tem SPEC; toda ADR ≥2 alternativas); validação de sintaxe Mermaid se ferramenta disponível, senão revisão manual documentada.
-- **Relatório final M0** no formato §16 (pt-BR, sem alegar o que não foi executado: `TESTS: NONE (M0 é modelagem)`; `PERFORMANCE: NOT_MEASURED`; próxima TASK `READY` = primeira task do M1).
-- **Fora de escopo (respeitando o contrato M0)**: qualquer `dotnet new`, scaffold, Docker, gasto externo, criação dos 3 repos de produto ou código de implementação. ADRs permanecem `PROPOSED` até decisão/aceite.
+Ordem: Fase 0 → Fase 1 (paralelizável com tail da 0) → 2 → 3 → 4 → 5 → 6.
