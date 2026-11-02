@@ -1,0 +1,166 @@
+{
+  "manifest_version": "1.0",
+  "specification_date": "2026-10-27",
+  "files": [
+    {
+      "path": "PROMPT_MASTER_ATLAS_COMMERCE_DOTNET10_MAF_SDD.md",
+      "size_bytes": 79505,
+      "sha256": "d1247f0476ec78a7c7f02f60b23e6c32c74536ca5c47a80e675c347ad1179238"
+    },
+    {
+      "path": "README_HANDOFF_DOTNET.md",
+      "size_bytes": 1930,
+      "sha256": "fe81732051ffadff9e250440f349a0515f6a1a6270b3b09cd05f38584657b2ce"
+    },
+    {
+      "path": "atlas-commerce-blueprint.md",
+      "size_bytes": 72803,
+      "sha256": "5990fb335e9599b6456c385b78d2c443cd8704d19dd740491cca950ff629a54d"
+    },
+    {
+      "path": "atlas-commerce-discovery/README.md",
+      "size_bytes": 3245,
+      "sha256": "7cb79ea95a42e2997eb45dfa41dc266c75fb6c47aff82c3df5b40166f3275cce"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/00-bounded-contexts.mmd",
+      "size_bytes": 969,
+      "sha256": "dc9d3ae6d82d45bcf1f53e5c14192ebdf0237df108ec13d2661276507f9d0924"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/01-usecases-storefront.puml",
+      "size_bytes": 964,
+      "sha256": "14130879a3d1c6ce8d7270e34ba2459c75b1a45f89a64a2c6868b1bda628168d"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/02-usecases-admin.puml",
+      "size_bytes": 1030,
+      "sha256": "d2101f5231d06df1ced4f02f769d2cc0bf9e769a44a707b5c5a7f6ee93800f25"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/03-er-catalog.mmd",
+      "size_bytes": 1848,
+      "sha256": "1f4f00d51635f682fb84302841f0959fd633927d45e129ca2b58cb48d46023ba"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/04-er-order-finance.mmd",
+      "size_bytes": 2376,
+      "sha256": "9f27464dcec6a89843b7332b4e6bf8ee7718436d5e0d8a3858157f91a5baa3c7"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/05-er-admin.mmd",
+      "size_bytes": 1335,
+      "sha256": "0d2623f8929b00783afd8f2733e77c1511d04256b6384acd0f32053cc2dabe7e"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/06-classes-order.mmd",
+      "size_bytes": 1400,
+      "sha256": "93cdb607ad267c8a3662099cdf57bc00b75f91c8952d1bd16ab385ffeaa6051b"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/07-classes-inventory.mmd",
+      "size_bytes": 1150,
+      "sha256": "434cb39e4ee8d4479cffb22374ab714d39ead2c1f503d88c0a5bf226f57e80c0"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/08-state-order.mmd",
+      "size_bytes": 1062,
+      "sha256": "91446962fb18a4e968e013be92270bac0ac3761f62807f07f08e16d635781372"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/09-cqrs-projection.mmd",
+      "size_bytes": 516,
+      "sha256": "7d8919e1d5cb11af6eae78ec1a976e7d9d2a85f8384a86f12a50886df0dfc8b7"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/10-sequence-checkout.mmd",
+      "size_bytes": 1769,
+      "sha256": "ccdff2fc4441aee4f14fe90c87bc0e6dae86f1d2904eaf1efd6c31ca97b14e4d"
+    },
+    {
+      "path": "atlas-commerce-discovery/diagrams/11-usecases-summary.mmd",
+      "size_bytes": 604,
+      "sha256": "0b2e0216abac02270024a0b8d0f70b1567d1f464e0315d0894d5106778bce780"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/01-VISAO-E-ESCOPO.md",
+      "size_bytes": 5834,
+      "sha256": "d72b8a2eaac6b2705c0a4f171e4e08692614cb4f465687ed8815f490ec09f295"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/02-DOMINIOS-E-INVARIANTES.md",
+      "size_bytes": 7130,
+      "sha256": "fa29e30b822a41b117fb18bfb8e321b6bc4f51a9400a3c35a86da75f69ad1fb6"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/03-CASOS-DE-USO-E-PROCESSOS.md",
+      "size_bytes": 8589,
+      "sha256": "a1cb28697298ff7c229c5d28631a51b4514cb08d1c8cee98b844cfca8da66294"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/04-MODELAGEM-DE-DADOS-CQRS.md",
+      "size_bytes": 9265,
+      "sha256": "42906b358dd9b44f5cf309184f98835fc270677131984de402bdf8bedc75ab5e"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/05-NFR-E-ESCALA.md",
+      "size_bytes": 5221,
+      "sha256": "2a8d63f9d738c41a7a4f245323257f2fcff716c8a31b19582d44ba44114f30e1"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/06-ARQUITETURA-ALVO-E-ADRS.md",
+      "size_bytes": 10103,
+      "sha256": "b1d616a6756dca83af5a1e390f9227b61d547423a076f2a8ddc8eb57cf2a0d2e"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/07-SDD-BACKLOG-E-QUALIDADE.md",
+      "size_bytes": 6067,
+      "sha256": "b824617964d02070a8b1945d65f1b92f041ef369293de91985c2f553b857d831"
+    },
+    {
+      "path": "atlas-commerce-discovery/docs/08-I18N-IAM-AI.md",
+      "size_bytes": 4657,
+      "sha256": "fd296d09fc83078ef8170227776a41828c556d27d748a6fdf495f0f5e341a037"
+    },
+    {
+      "path": "references/dotnet/00-ADAPTATION-AND-PRECEDENCE.md",
+      "size_bytes": 3259,
+      "sha256": "a07128e80f6cc3da7292182e6564702b0e530f0240f78f3a21d89646d892b423"
+    },
+    {
+      "path": "references/dotnet/01-DOTNET-ARCHITECTURE.md",
+      "size_bytes": 5238,
+      "sha256": "7c3f6c5c96674321c08d368a24710136835fba28ec7db6163cc9565df3eb61d2"
+    },
+    {
+      "path": "references/dotnet/02-MAF-SHOPPING-ASSISTANT.md",
+      "size_bytes": 5368,
+      "sha256": "2a99fefae451a22e6c15b478d831613e636a9e728dd492b69b7acb2ae28aa5b6"
+    },
+    {
+      "path": "references/dotnet/03-SDD-GATES-AND-ROADMAP.md",
+      "size_bytes": 3576,
+      "sha256": "578828e9fef3c445cd857e95c418a9f6b2964c3d1ca88ad982ebf6b81b7ce7cc"
+    },
+    {
+      "path": "references/dotnet/04-DEPENDENCIES-AND-SOURCES.md",
+      "size_bytes": 2705,
+      "sha256": "f019aaa7f045da4510539bc93dae2e3acfec7c1cf1872dd57840d33098102d4b"
+    },
+    {
+      "path": "references/dotnet/diagrams/00-dotnet-systems-and-owners.mmd",
+      "size_bytes": 1366,
+      "sha256": "d6471398cf7b173f777c51c702b729dd8e74b55c72ef1a58c7167e1b57506ee6"
+    },
+    {
+      "path": "references/dotnet/diagrams/01-maf-shopping-workflow.mmd",
+      "size_bytes": 794,
+      "sha256": "c2c74034261ec15bb14b6e737dc53f27d666c4f1df5cd6b0ab2e57e14782041c"
+    },
+    {
+      "path": "references/dotnet/diagrams/02-sdd-milestone-gates.mmd",
+      "size_bytes": 609,
+      "sha256": "518f22990eae0c44966a5fd29a21bce67099a7d2510d60388f887af3cd86e405"
+    }
+  ]
+}
