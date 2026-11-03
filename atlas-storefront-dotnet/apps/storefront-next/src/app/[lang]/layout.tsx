@@ -8,6 +8,8 @@ import { CartWidget } from "@atlas/components/CartWidget";
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.STOREFRONT_URL ?? "http://localhost:3000"),
   title: { default: "Atlas Storefront", template: "%s · Atlas Storefront" },
+  alternates: { languages: { "pt-BR": "/pt-BR", "en-US": "/en-US", "es-ES": "/es-ES" } },
+  openGraph: { siteName: "Atlas Storefront", type: "website" },
 };
 
 // Pré-render por locale (App Router: i18n manual via segmento [lang] — guia oficial)
