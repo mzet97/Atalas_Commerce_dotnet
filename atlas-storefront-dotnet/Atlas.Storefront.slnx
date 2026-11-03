@@ -44,6 +44,7 @@
   <Folder Name="/src/Workers/">
     <Project Path="src/Workers/Atlas.Workers.Projections/Atlas.Workers.Projections.csproj" />
     <Project Path="src/Workers/Atlas.Workers.Notifications/Atlas.Workers.Notifications.csproj" />
+    <Project Path="src/AI/ShoppingAssistant/Atlas.ShoppingAssistant.Api/Atlas.ShoppingAssistant.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Atlas.Catalog.Api.Tests/Atlas.Catalog.Api.Tests.csproj" />
@@ -63,6 +64,7 @@
     <Project Path="tests/Atlas.Payments.Domain.Tests/Atlas.Payments.Domain.Tests.csproj" />
     <Project Path="tests/Atlas.Workers.ProjectionTests/Atlas.Workers.ProjectionTests.csproj" />
     <Project Path="tests/Atlas.Workers.Notifications.Tests/Atlas.Workers.Notifications.Tests.csproj" />
+    <Project Path="tests/Atlas.ShoppingAssistant.Tests/Atlas.ShoppingAssistant.Tests.csproj" />
     <Project Path="tests/SimulatedPsp.Tests/SimulatedPsp.Tests.csproj" />
   </Folder>
   <Project Path="../atlas-platform-contracts-dotnet/src/Atlas.Contracts.Grpc/Atlas.Contracts.Grpc.csproj" />
