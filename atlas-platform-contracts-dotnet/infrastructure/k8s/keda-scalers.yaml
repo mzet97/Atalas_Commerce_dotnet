@@ -1,0 +1,32 @@
+# KEDA (SPEC-008): workers escalando por lag (Kafka consumer-lag + RabbitMQ queue length)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: atlas-projections-kafka-lag
+spec:
+  scaleTargetRef: { name: atlas-projections-worker }
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: atlas-kafka.atlas-data:29092
+        consumerGroup: atlas-projections-v1
+        topic: atlas.catalog.v1
+        lagThreshold: "500"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: atlas-notifications-rabbit
+spec:
+  scaleTargetRef: { name: atlas-notifications-worker }
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  triggers:
+    - type: rabbitmq
+      metadata:
+        host: amqp://atlas:atlas_dev_only@atlas-rabbit.atlas-data
+        queueName: notifications.tasks.q
+        mode: QueueLength
+        value: "100"

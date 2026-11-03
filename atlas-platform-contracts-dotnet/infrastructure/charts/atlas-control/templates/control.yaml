@@ -1,0 +1,45 @@
+{{- range $name, $cfg := .Values }}
+{{- if and $cfg (hasKey $cfg "enabled") }}{{- if $cfg.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atlas-control-{{ $name }}
+spec:
+  replicas: {{ $cfg.replicaCount }}
+  selector:
+    matchLabels: { app: atlas-control-{{ $name }} }
+  template:
+    metadata:
+      labels: { app: atlas-control-{{ $name }} }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1654 }
+      containers:
+        - name: app
+          image: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
+          ports: [{ containerPort: {{ $cfg.containerPort }} }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas-control-{{ $name }}
+spec:
+  selector: { app: atlas-control-{{ $name }} }
+  ports: [{ port: 80, targetPort: {{ $cfg.containerPort }} }]
+{{- if $cfg.hpa }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: atlas-control-{{ $name }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: atlas-control-{{ $name }} }
+  minReplicas: {{ $cfg.hpa.minReplicas }}
+  maxReplicas: {{ $cfg.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ $cfg.hpa.cpuTargetPercent }} } }
+{{- end }}
+{{- end }}{{- end }}
+{{- end }}
