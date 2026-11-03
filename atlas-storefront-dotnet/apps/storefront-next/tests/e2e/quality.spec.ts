@@ -27,16 +27,15 @@ for (const p of PAGES) {
 test("cwv pt-BR: LCP < 2.5s e CLS < 0.1 (budget)", async ({ page }) => {
   await page.goto("about:blank");
   await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__cwv = { lcp: 0, cls: 0 };
+    const w = window as unknown as { __cwv?: { lcp: number; cls: number } };
+    w.__cwv = { lcp: 0, cls: 0 };
     new PerformanceObserver((l) => {
       const entries = l.getEntries() as unknown as { startTime: number }[];
-      (window as unknown as Record<string, unknown>).__cwv.lcp =
-        entries[entries.length - 1].startTime;
+      w.__cwv!.lcp = entries[entries.length - 1].startTime;
     }).observe({ type: "largest-contentful-paint", buffered: true });
     new PerformanceObserver((l) => {
       for (const e of l.getEntries() as unknown as { value: number; hadRecentInput: boolean }[]) {
-        const w = window as unknown as { __cwv: { cls: number } };
-        if (!e.hadRecentInput) w.__cwv.cls += e.value;
+        if (!e.hadRecentInput) w.__cwv!.cls += e.value;
       }
     }).observe({ type: "layout-shift", buffered: true });
   });
