@@ -47,19 +47,20 @@ app.MapGet("/api/catalog/products", async (CancellationToken ct) =>
 });
 
 // ---- M5: busca com facets (req. UC-001) ----
-app.MapGet("/api/catalog/search", async (string? q, string? market, int? page, int? pageSize, CancellationToken ct) =>
+app.MapGet("/api/catalog/search", async (string? q, string? market, string? sku, int? page, int? pageSize, CancellationToken ct) =>
 {
     var pageEff = Math.Max(page ?? 1, 1);
     var sizeEff = Math.Clamp(pageSize ?? 12, 1, 50);
     await using var conn = new NpgsqlConnection(pgConn);
     await conn.OpenAsync(ct);
-    var where = "WHERE status = 'Published' AND (CAST(@q AS text) IS NULL OR title ILIKE '%' || CAST(@q AS text) || '%') AND (CAST(@market AS text) IS NULL OR market_id = CAST(@market AS text))";
+    var where = "WHERE status = 'Published' AND (CAST(@q AS text) IS NULL OR title ILIKE '%' || CAST(@q AS text) || '%') AND (CAST(@market AS text) IS NULL OR market_id = CAST(@market AS text)) AND (CAST(@sku AS text) IS NULL OR @sku = ANY(skus))";
     long total;
     var facets = new Dictionary<string, long>();
     await using (var countCmd = new NpgsqlCommand($"SELECT count(*) FROM catalog_product_search {where}", conn))
     {
         countCmd.Parameters.AddWithValue("q", (object?)q ?? DBNull.Value);
         countCmd.Parameters.AddWithValue("market", (object?)market ?? DBNull.Value);
+        countCmd.Parameters.AddWithValue("sku", (object?)sku ?? DBNull.Value);
         total = (long)(await countCmd.ExecuteScalarAsync(ct))!;
     }
     await using (var facetCmd = new NpgsqlCommand(
@@ -75,6 +76,7 @@ app.MapGet("/api/catalog/search", async (string? q, string? market, int? page, i
     {
         cmd.Parameters.AddWithValue("q", (object?)q ?? DBNull.Value);
         cmd.Parameters.AddWithValue("market", (object?)market ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("sku", (object?)sku ?? DBNull.Value);
         cmd.Parameters.AddWithValue("limit", sizeEff);
         cmd.Parameters.AddWithValue("offset", (pageEff - 1) * sizeEff);
         await using var r = await cmd.ExecuteReaderAsync(ct);

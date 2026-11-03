@@ -74,12 +74,13 @@ app.MapPost("/assistant/turn", async (HttpContext http, IHttpClientFactory facto
             model = useFake ? "fake" : ollamaModel,
         });
     }
-    catch (Exception)
+    catch (Exception ex)
     {
         // FALLBACK (SPEC-007 §9): LLM indisponível → busca convencional, nunca erro seco
+        Console.Error.WriteLine($"[assistant] fallback ativado: {ex.GetType().Name}: {ex.Message}");
         sw.Stop();
         var data = await new CatalogTools(factory.CreateClient("marketplace"), marketplaceUrl)
-            .SearchCatalog(message, null, ct);
+            .SearchCatalog(message, "todos", ct);
         return Results.Ok(new { source = "fallback-search", reply = data, latencyMs = sw.ElapsedMilliseconds, model = "none" });
     }
 });
