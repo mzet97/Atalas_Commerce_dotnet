@@ -89,9 +89,7 @@ app.MapGet("/intents/by-order/{orderId}", async (string orderId, MongoPaymentsSt
 
 // ---- SPEC-006 req.2 (REQ-RET-001): refund COERENTE — four-eyes token + idempotência + PSP real fake ----
 var refundSecret = app.Configuration["Approval:TokenSecret"] ?? "atlas-dev-approval-secret";
-var processedRefunds = app.Configuration["Refund:IdempotencyStore"] is null
-    ? new System.Collections.Concurrent.ConcurrentDictionary<string, byte>()
-    : throw new NotSupportedException("store persistente na SPEC-006+ (dev: in-memory)");
+var processedRefunds = app.Services;
 
 app.MapPost("/admin/refunds", async (
     HttpRequest http, MongoPaymentsStore store, IHttpClientFactory factory, CancellationToken ct) =>
@@ -105,8 +103,10 @@ app.MapPost("/admin/refunds", async (
     if (string.IsNullOrEmpty(orderId) || amountMinor <= 0 || string.IsNullOrEmpty(idempotencyKey))
         return Results.BadRequest(new { error = "orderId/amountMinor/idempotencyKey obrigatórios" });
 
-    // 1) idempotência: mesma key → MESMO resultado (T02 do refund)
-    if (!processedRefunds.TryAdd(idempotencyKey!, 0))
+    // 1) idempotência PERSISTENTE: mesma key → MESMO resultado (T02 do refund)
+    var refundStore = app.Services.GetRequiredService<Atlas.Payments.Infrastructure.MongoRefundStore>();
+    var isNewRefund = await refundStore.TryRegisterAsync(idempotencyKey!, orderId!, amountMinor, "pending-approval-check", ct);
+    if (!isNewRefund)
         return Results.Ok(new { status = "already-processed", orderId, amountMinor });
 
     // 2) four-eyes: token HMAC validado no OWNER (INV-SEC-001) — emitido pelo Control pós-RMA
