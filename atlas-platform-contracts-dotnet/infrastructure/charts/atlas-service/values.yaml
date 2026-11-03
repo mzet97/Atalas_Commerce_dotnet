@@ -1,0 +1,24 @@
+# Padrões de segurança/hardening (SPEC-008): deny por default onde couber
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+replicaCount: 2
+containerPort: 8080
+env: []
+secrets: []           # [{name, key, envName}] — injetadas de Secret (nunca em Git)
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+probes:
+  liveness: { path: /health, initialDelaySeconds: 10, periodSeconds: 10 }
+  readiness: { path: /health, initialDelaySeconds: 5, periodSeconds: 5 }
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  cpuTargetPercent: 70
+networkPolicy:
+  enabled: true
+  allowFrom: []       # [{podSelectorLabels...}] — deny-by-default com exceções explícitas
+  allowPorts: [8080]

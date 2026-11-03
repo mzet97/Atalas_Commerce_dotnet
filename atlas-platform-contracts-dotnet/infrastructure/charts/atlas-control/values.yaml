@@ -1,0 +1,10 @@
+host:
+  enabled: true
+  image: { repository: atlas/control-host, tag: "0.1.0-dev" }
+  containerPort: 8080
+  replicaCount: 2
+  hpa: { enabled: true, minReplicas: 2, maxReplicas: 4, cpuTargetPercent: 70 }
+web:
+  enabled: true
+  image: { repository: atlas/control-web, tag: "0.1.0-dev" }
+  containerPort: 4200

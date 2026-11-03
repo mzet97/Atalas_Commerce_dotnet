@@ -1,0 +1,6 @@
+dependencies:
+- name: atlas-service
+  repository: file://../atlas-service
+  version: 0.1.0
+digest: sha256:65f736efbefa371b34888d5dfcbe252d46875e98f11d88ea77715f9af39f1dbb
+generated: "2026-11-03T12:43:17.042652876-03:00"

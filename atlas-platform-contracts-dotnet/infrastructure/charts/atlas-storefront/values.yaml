@@ -1,0 +1,152 @@
+# SPEC-008: values dev (cluster não-prod). Imagens placeholder — FASE E constrói/push real.
+atlasService:
+  gateway:
+    enabled: true
+    image:
+      repository: atlas/gateway
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+  catalog-api:
+    enabled: true
+    image:
+      repository: atlas/catalog-api
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: "gateway"
+  offers-api:
+    enabled: true
+    image:
+      repository: atlas/offers-api
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: "gateway"
+  inventory-api:
+    enabled: true
+    image:
+      repository: atlas/inventory-api
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: "gateway"
+  checkout-api:
+    enabled: true
+    image:
+      repository: atlas/checkout-api
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: "gateway"
+  payments-api:
+    enabled: true
+    image:
+      repository: atlas/payments-api
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: "gateway"
+  fulfillment:
+    enabled: true
+    image:
+      repository: atlas/fulfillment-api
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+  assistant:
+    enabled: true
+    image:
+      repository: atlas/assistant
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+  notifications-worker:
+    enabled: true
+    image:
+      repository: atlas/notifications
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+  projections-worker:
+    enabled: true
+    image:
+      repository: atlas/projections
+      tag: "0.1.0-dev"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""

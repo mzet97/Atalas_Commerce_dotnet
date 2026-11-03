@@ -1,0 +1,111 @@
+{{- range $name, $cfg := .Values.atlasService }}
+{{- if $cfg.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atlas-{{ $name }}
+  labels:
+    app: atlas-{{ $name }}
+    app.kubernetes.io/part-of: atlas-commerce
+spec:
+  replicas: {{ $cfg.replicaCount }}
+  selector:
+    matchLabels:
+      app: atlas-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app: atlas-{{ $name }}
+        app.kubernetes.io/part-of: atlas-commerce
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: service
+          image: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ $cfg.containerPort }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ $cfg.containerPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ $cfg.containerPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas-{{ $name }}
+spec:
+  selector:
+    app: atlas-{{ $name }}
+  ports:
+    - port: 80
+      targetPort: {{ $cfg.containerPort }}
+---
+{{- if $cfg.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: atlas-{{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: atlas-{{ $name }}
+  minReplicas: {{ $cfg.hpa.minReplicas }}
+  maxReplicas: {{ $cfg.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.hpa.cpuTargetPercent }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: atlas-{{ $name }}-deny-by-default
+spec:
+  podSelector:
+    matchLabels:
+      app: atlas-{{ $name }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- if $cfg.networkPolicy.allowFromApp }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app: atlas-{{ $cfg.networkPolicy.allowFromApp }}
+      ports:
+        - protocol: TCP
+          port: 80
+    {{- else }}
+    - from: []
+    {{- end }}
+{{- end }}
+{{- end }}

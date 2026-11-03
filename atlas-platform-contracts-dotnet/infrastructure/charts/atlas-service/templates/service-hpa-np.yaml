@@ -1,0 +1,61 @@
+{{- define "atlas-service.service" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "atlas-service.name" . }}
+spec:
+  selector:
+    app: {{ include "atlas-service.name" . }}
+  ports:
+    - port: 80
+      targetPort: {{ .Values.containerPort }}
+{{- end -}}
+
+{{- define "atlas-service.hpa" -}}
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "atlas-service.name" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "atlas-service.name" . }}
+  minReplicas: {{ .Values.hpa.minReplicas }}
+  maxReplicas: {{ .Values.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.cpuTargetPercent }}
+{{- end }}
+{{- end -}}
+
+{{- define "atlas-service.networkpolicy" -}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "atlas-service.name" . }}-deny-by-default
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ include "atlas-service.name" . }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- range .Values.networkPolicy.allowFrom }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ .app }}
+      ports:
+        {{- range $.Values.networkPolicy.allowPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- end -}}

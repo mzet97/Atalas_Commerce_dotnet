@@ -1,0 +1,6 @@
+apiVersion: v2
+name: atlas-storefront
+description: Umbrella do data plane Atlas (SPEC-008/M8) — templates self-contained hardenizados
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
