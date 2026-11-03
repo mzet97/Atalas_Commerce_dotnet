@@ -1,6 +1,6 @@
 # ADR-0008 — Microsoft Agent Framework em C# + abstração de provider via IChatClient
 
-**Status:** PROPOSED · **Data:** 2026-10-27 · **Absorve (invertendo):** blueprint ADR-005 (era LangGraph → LEGACY)
+**Status:** ACCEPTED (2026-11-03 — spike M7 PASS: MAF 1.26.0 + tool calling Ollama qwen3.6:27b real; EVD-007-001)
 
 ## Contexto
 O assistente de compras deve ser C#/.NET 10 com MAF; proibidos LangChain/LangGraph/Semantic Kernel como orquestrador e qualquer backend Python de produto. O provedor de modelo precisa ser substituível (local on-prem ↔ cloud opcional).
