@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Atlas.Control.Modules.CatalogOperations\Atlas.Control.Modules.CatalogOperations.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Atlas.Control.Modules.Approvals\Atlas.Control.Modules.Approvals.csproj" />
+    <ProjectReference Include="..\..\src\Atlas.Control.Module.Abstractions\Atlas.Control.Module.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Atlas.Control.Host\Atlas.Control.Host.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,31 @@
+%% NOVO (edição .NET) — Devolução e estorno (UC-004): RMA distinto do refund.
+sequenceDiagram
+    autonumber
+    actor C as Cliente
+    participant ST as Next.js Storefront
+    participant RET as Returns Service
+    participant ADM as Control (aprovação four-eyes)
+    participant PAY as Payments Service (owner)
+    participant PSP as PSP (sandbox/fake)
+    participant ORD as Orders Service
+    participant EVT as Outbox/Kafka
+    C->>ST: RequestReturn(order_id, reason)
+    ST->>RET: RequestReturn
+    RET->>RET: valida janela de política e estado Delivered
+    RET-->>C: RMA criado (instruções logísticas)
+    Note over RET,ADM: fluxo logístico reverso (transportadora) separado
+    RET->>ADM: ApproveRefund request (risco financeiro)
+    ADM->>ADM: requested_by != approved_by (INV-ADMIN-001)
+    ADM-->>RET: aprovado (auditoria)
+    RET->>PAY: Refund(capture_id, amount, idempotency_key)
+    PAY->>PSP: Refund request
+    alt PSP confirma
+        PSP-->>PAY: Refunded (referência assinada)
+        PAY->>EVT: Refunded event (outbox transacional)
+        EVT->>ORD: projeção atualiza timeline do pedido
+        ORD-->>C: status Refunded visível
+    else PSP recusa/timeout
+        PSP--xPAY: Unknown/Declined
+        PAY->>PAY: RefundPending + reconciliação + incidente
+    end
+    Note over PAY,PSP: refund parcial suportado; nunca edit in place (INV-PAYMENT-001)

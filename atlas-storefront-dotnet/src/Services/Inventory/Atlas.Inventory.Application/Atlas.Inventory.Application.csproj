@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Application: ports e handlers; zero dependências de infra (ADR-0001/0019) -->
+  <ItemGroup>
+    <ProjectReference Include="..\Atlas.Inventory.Domain\Atlas.Inventory.Domain.csproj" />
+  </ItemGroup>
+</Project>

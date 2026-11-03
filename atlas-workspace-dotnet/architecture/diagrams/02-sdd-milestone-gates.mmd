@@ -1,0 +1,15 @@
+flowchart LR
+  M0[M0 Recon + Business Modeling] --> G0{Source/ownership gate}
+  G0 -- PASS --> M1[M1 .NET Foundation via CLI]
+  G0 -- FAIL/BLOCKED --> FIX0[Update SPEC/ADR and evidence]
+  FIX0 --> M0
+  M1 --> G1{Build/CI/Auth/Trace gate}
+  G1 -- PASS --> M2[M2 First vertical slice]
+  G1 -- FAIL --> M1
+  M2 --> G2{Owner/CQRS/inventory tests}
+  G2 -- PASS --> M3[M3 Checkout + PSP Saga]
+  G2 -- FAIL --> M2
+  M3 --> M4[M4 Admin] --> M5[M5 i18n/Storefront]
+  M5 --> M6[M6 Fulfillment] --> M7[M7 C# MAF]
+  M7 --> M8[M8 K8s] --> M9[M9 Benchmark] --> M11[M11 Portfolio]
+  M9 -.-> M10[M10 Marketplace 3P deferred]

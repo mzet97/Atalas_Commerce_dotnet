@@ -1,0 +1,70 @@
+%% NOVO (edição .NET) — ER do contexto Shopping Assistant (MAF). Sessão NÃO é verdade de negócio.
+erDiagram
+    CUSTOMER ||--o{ CONVERSATION : starts
+    CONVERSATION ||--o{ CONVERSATION_TURN : contains
+    CONVERSATION_TURN ||--o{ TOOL_INVOCATION : triggers
+    TOOL_INVOCATION ||--|| TOOL_GRANT : authorized_by
+    CONVERSATION_TURN ||--o| RECOMMENDATION : produces
+    RECOMMENDATION ||--o{ RECOMMENDATION_ITEM : cites
+    CONVERSATION ||--o{ CART_PROPOSAL : proposes
+    CART_PROPOSAL ||--o{ CART_PROPOSAL_LINE : includes
+    CART_PROPOSAL ||--o| CONSENT_ARTIFACT : bound_to
+    CONSENT_ARTIFACT ||--|| CART_MUTATION : authorizes
+    CONVERSATION {
+      uuid conversation_id PK
+      uuid customer_id FK
+      string locale
+      string market_id
+      datetime created_at
+      datetime expires_at "TTL, política de retenção"
+    }
+    CONVERSATION_TURN {
+      uuid turn_id PK
+      uuid conversation_id FK
+      string role
+      text content_redacted "sem PII por padrão"
+      int token_count
+    }
+    TOOL_INVOCATION {
+      uuid invocation_id PK
+      uuid turn_id FK
+      string tool_name "allowlist read-only"
+      jsonb arguments_validated
+      string outcome "ok|denied|error"
+      int latency_ms
+    }
+    TOOL_GRANT {
+      uuid grant_id PK
+      uuid conversation_id FK
+      string tool_name
+      string scope
+      datetime expires_at
+    }
+    RECOMMENDATION {
+      uuid recommendation_id PK
+      jsonb rationale
+      datetime quoted_at "grounding com TTL"
+    }
+    RECOMMENDATION_ITEM {
+      uuid item_id PK
+      uuid product_id "validado pelo owner"
+      uuid offer_id
+      string provenance
+    }
+    CART_PROPOSAL {
+      uuid proposal_id PK
+      jsonb lines_canonical "hash para consent"
+      string status "proposed|approved|expired|revoked"
+    }
+    CONSENT_ARTIFACT {
+      uuid consent_id PK
+      uuid customer_id FK
+      string nonce
+      string payload_hash
+      datetime expires_at
+    }
+    CART_MUTATION {
+      uuid mutation_id PK
+      string idempotency_key
+      string executed_by "Cart owner API, nunca pelo agente"
+    }

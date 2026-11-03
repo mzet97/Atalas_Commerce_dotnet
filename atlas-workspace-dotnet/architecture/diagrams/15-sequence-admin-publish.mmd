@@ -1,0 +1,25 @@
+%% NOVO (edição .NET) — Publicação de produto via Admin (UC-005) — caminho real de dados.
+sequenceDiagram
+    autonumber
+    actor OP as Catalog Manager (Angular)
+    participant CTL as Control Modular Monolith
+    participant CAT as Catalog Service (owner)
+    participant MDB as MongoDB (aggregate+outbox)
+    participant CDC as Debezium CDC
+    participant K as Kafka
+    participant PRJ as Projection Worker (.NET)
+    participant PG as PostgreSQL
+    participant NX as Next.js Storefront
+    OP->>CTL: Submit product draft (OIDC + catalog:publish, market BR)
+    CTL->>CTL: Autorização ABAC + four-eyes approval persistida (auditoria)
+    CTL->>CAT: PublishProduct (gRPC autenticado, idempotency_key)
+    CAT->>CAT: Revalida política, versão e pré-condições
+    CAT->>MDB: Transação local: aggregate vN + outbox ProductPublished
+    CAT-->>CTL: Accepted (version, correlation_id)
+    MDB->>CDC: Change Stream do outbox
+    CDC->>K: Evento com envelope INV-EVT-001 (key=aggregate_id)
+    K->>PRJ: consume (consumer group)
+    PRJ->>PG: Transação: upsert catalog_product_search + processed_events
+    PG-->>NX: query catalog_product_search (source_version)
+    NX-->>OP: UI admin mostra PUBLISHING até source_version = vN
+    Note over CTL,CAT: Control NUNCA escreve no MongoDB de catálogo (ADR-0001)

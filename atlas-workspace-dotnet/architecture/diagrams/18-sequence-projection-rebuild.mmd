@@ -1,0 +1,26 @@
+%% NOVO (edição .NET) — Reconstrução de projeção (replay) com dedup determinístico.
+sequenceDiagram
+    autonumber
+    actor SRE as SRE/Operador
+    participant ADM as Control
+    participant PRJ as Projection Worker (.NET)
+    participant K as Kafka (replay desde offset inicial)
+    participant PG as PostgreSQL
+    SRE->>ADM: RebuildProjection(catalog_product_search) com autorização
+    ADM-->>PRJ: job autorizado (dry-run opcional primeiro)
+    PRJ->>PG: snapshot de projection_offsets atual
+    loop cada evento do tópico do contexto
+        PRJ->>K: consume (mesmo consumer group de rebuild)
+        K-->>PRJ: evento (event_id, aggregate_id, aggregate_version)
+        alt event_id já em processed_events
+            PRJ->>PRJ: pula (idempotente — INV-EVT-001)
+        else evento fora de ordem (versão antiga)
+            PRJ->>PG: staging/upsert condicional por source_version
+        else evento novo
+            PRJ->>PG: Transação: upsert projeção + processed_events
+        end
+    end
+    PRJ->>PG: avança projection_offsets (mesma transação do último evento)
+    PRJ-->>ADM: relatório (eventos aplicados/pulados, drift=0)
+    ADM-->>SRE: evidência com timestamps e diff de contagens
+    Note over PRJ,PG: replay NÃO bloqueia a vitrine; projeção ativa continua servindo leitura

@@ -1,0 +1,19 @@
+%% NOVO (edição .NET) — Máquina de estados da Approval (Control Modular Monolith).
+stateDiagram-v2
+    [*] --> Requested : operador submete (justificativa + payload hash)
+    Requested --> Approved : approver != requested_by (four-eyes, INV-ADMIN-001)
+    Requested --> Rejected : approver != requested_by com motivo
+    Requested --> Revoked : solicitante cancela
+    Approved --> Dispatching : comando autenticado ao owner
+    Dispatching --> Executed : owner confirma política + pré-condições
+    Dispatching --> Failed : owner nega (403 / invariante) ou indisponível
+    Executed --> [*] : AdminActionAudited persistido
+    Failed --> Requested : re-submissão corrigida (novo approval_id)
+    Rejected --> [*]
+    Revoked --> [*]
+
+    note right of Approved
+        Owner REVALIDA autorização e escopo na
+        execução; aprovação do Control não é
+        bypass (INV-SEC-001).
+    end note

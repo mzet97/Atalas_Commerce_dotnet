@@ -1,0 +1,13 @@
+bin/
+obj/
+artifacts/
+node_modules/
+.next/
+dist/
+*.user
+.vs/
+.idea/
+TestResults/
+coverage/
+results/*/
+.angular/

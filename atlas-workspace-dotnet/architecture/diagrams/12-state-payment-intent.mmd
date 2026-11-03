@@ -1,0 +1,25 @@
+%% NOVO (edição .NET) — Máquina de estados do PaymentIntent. Complementa 08-state-order.
+stateDiagram-v2
+    [*] --> Created : PlaceOrder aceito (PENDING_PAYMENT)
+    Created --> Authorizing : Authorize(idempotency_key)
+    Authorizing --> Authorized : PSP respondeu AUTENTICADO
+    Authorizing --> Declined : PSP recusa (terminal)
+    Authorizing --> Unknown : timeout / resposta não verificável
+    Unknown --> Authorized : reconciliador confirma no PSP
+    Unknown --> Declined : reconciliador confirma recusa
+    Unknown --> Unknown : aguarda próximo ciclo (retry com jitter)
+    Authorized --> Captured : Capture confirmada por PSP
+    Authorized --> AuthorizationVoided : expirou sem captura (compensação)
+    Captured --> RefundPending : ReturnApproved / compensation
+    RefundPending --> Refunded : PSP confirma refund
+    RefundPending --> RefundFailed : PSP recusa refund (incidente + caso de conciliação)
+    Declined --> [*]
+    Captured --> [*]
+    Refunded --> [*]
+    AuthorizationVoided --> [*]
+
+    note right of Unknown
+        Nunca inferir sucesso por HTTP 200.
+        Webhook duplicado/fora de ordem não
+        avança duas vezes (INV-PAYMENT-001).
+    end note

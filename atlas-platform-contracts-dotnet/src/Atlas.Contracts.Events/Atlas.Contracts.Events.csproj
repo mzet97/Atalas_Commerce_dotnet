@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Directory.Build.props aplica TFM/nullable/analyzers -->
+</Project>

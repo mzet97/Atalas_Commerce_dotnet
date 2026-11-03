@@ -1,0 +1,47 @@
+%% NOVO (edição .NET) — Deployment alvo: Kubernetes on-prem (M8). Helm versionado + Skaffold dev.
+flowchart TB
+    subgraph NS_EDGE[namespace edge]
+      ING[Ingress/Gateway API + TLS]
+    end
+    subgraph NS_APPS[namespace atlas-apps]
+      DEP_GW[Deployment gateway - HPA]
+      DEP_SVC[Deployments catalog/offers/inventory/cart/checkout/orders/payments]
+      DEP_CTL[Deployment control-host]
+      DEP_AI[Deployment shopping-assistant - M7]
+    end
+    subgraph NS_WORKERS[namespace atlas-workers]
+      PROJ[Deployment projection-workers - KEDA por consumer lag]
+      RECON[Deployment reconciliation]
+      TASKW[Deployment task-workers Rabbit]
+    end
+    subgraph NS_DATA[namespace atlas-data - StatefulSets/operadores, HA planejada]
+      MONGO[(MongoDB replica set - operador/PV/backups)]
+      PG[(PostgreSQL - operador/PV/backups + restore drill)]
+      REDIS[(Redis)]
+    end
+    subgraph NS_MSG[namespace atlas-messaging]
+      KAFKA[(Kafka - partições por aggregate key)]
+      ZK[(KRaft/ZK)]
+      CONNECT[CDC Debezium]
+      RABBIT[(RabbitMQ quorum)]
+    end
+    subgraph NS_SEC[namespace atlas-security]
+      KC[(Keycloak - MFA admins)]
+      VAULT[ExternalSecrets/Vault]
+    end
+    subgraph NS_OBS[namespace observability]
+      OTEL[OTel Collector]
+      GRAFANA[Grafana: Prometheus-Mimir/Loki/Tempo/Pyroscope]
+    end
+    ING --> DEP_GW --> DEP_SVC
+    ING --> DEP_CTL
+    DEP_GW --> DEP_AI
+    DEP_SVC & DEP_CTL --> MONGO
+    PROJ & RECON & TASKW --> PG & KAFKA & RABBIT
+    MONGO --> CONNECT --> KAFKA --> PROJ
+    DEP_SVC -.mTLS/identity.-> KC
+    VAULT -.secrets.-> DEP_SVC & DEP_CTL & PROJ
+    OTEL -.metrics/logs/traces.-> GRAFANA
+    subgraph NOTES[Política]
+      PDB[PDB, probes readiness/liveness/startup, graceful shutdown, resources limits/requests, topology spread, NetworkPolicy]
+    end

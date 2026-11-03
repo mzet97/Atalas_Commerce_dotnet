@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Módulo do monólito Control: presentation-layer in-process (ADR-0001).
+    Ao gerar dentro de atlas-control-dotnet, substituir o contrato local abaixo
+    pela ProjectReference em src/Atlas.Control.Module.Abstractions.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package atlas.catalog.v1;
+
+// Contrato Admin→Owner (Control → Catalog). Draft v1 (SPEC-002).
+// Identidades fortes como string (UUIDv7); Money em minor units por design INV-MONEY-001.
+
+option csharp_namespace = "Atlas.Contracts.Catalog.V1";
+
+service CatalogOwnerService {
+  // Cria/atualiza rascunho de produto (idempotente por request_id).
+  rpc UpsertDraft(UpsertDraftRequest) returns (UpsertDraftResponse);
+  // Submete rascunho para aprovação (UC-005: estado PendingApproval pré-publish).
+  rpc SubmitForApproval(SubmitForApprovalRequest) returns (SubmitForApprovalResponse);
+  // Publica produto previamente aprovado no Control (approval_token assinado).
+  rpc PublishProduct(PublishProductRequest) returns (PublishProductResponse);
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+}
+
+message UpsertDraftRequest {
+  string request_id = 1;      // idempotency key
+  string actor_sub = 2;       // operador autenticado (audit)
+  string correlation_id = 3;
+  string product_id = 4;      // vazio = criar
+  string category_id = 5;
+  repeated LocalizedText titles = 6;
+  repeated LocalizedText descriptions = 7;
+  repeated SkuDraft skus = 8;
+  map<string, string> attributes = 9;
+}
+
+message LocalizedText {
+  string locale = 1;          // pt-BR | en-US | es-ES
+  string text = 2;
+}
+
+message SkuDraft {
+  string sku_id = 1;
+  string sku_code = 2;
+  map<string, string> variant_attributes = 3;
+}
+
+message UpsertDraftResponse {
+  string product_id = 1;
+  int64 aggregate_version = 2;
+  bool accepted = 3;
+  string reason = 4;          // vazio se accepted
+}
+
+message PublishProductRequest {
+  string request_id = 1;
+  string approval_token = 2;  // token assinado pelo Control (ADR four-eyes)
+  string product_id = 3;
+  int64 expected_version = 4; // concorrência otimista
+  string market_id = 5;
+}
+
+message PublishProductResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string event_id = 3;        // ProductPublished
+  string reason = 4;
+}
+
+message GetProductRequest { string product_id = 1; string locale = 2; }
+
+message GetProductResponse {
+  string product_id = 1;
+  string status = 2;
+  int64 aggregate_version = 3;
+  repeated LocalizedText titles = 4;
+  repeated SkuView skus = 5;
+}
+
+message SkuView { string sku_id = 1; string sku_code = 2; }
+
+message SubmitForApprovalRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string product_id = 3;
+  int64 expected_version = 4;
+}
+
+message SubmitForApprovalResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string reason = 3;
+}

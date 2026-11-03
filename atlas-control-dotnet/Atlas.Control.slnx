@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Atlas.Control.Host/Atlas.Control.Host.csproj" />
+    <Project Path="src/Atlas.Control.Module.Abstractions/Atlas.Control.Module.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Atlas.Control.Modules.Approvals/Atlas.Control.Modules.Approvals.csproj" />
+    <Project Path="src/Modules/Atlas.Control.Modules.Kernel/Atlas.Control.Modules.Kernel.csproj" />
+    <Project Path="src/Modules/Atlas.Control.Modules.InventoryOperations/Atlas.Control.Modules.InventoryOperations.csproj" />
+    <Project Path="src/Modules/Atlas.Control.Modules.Payments/Atlas.Control.Modules.Payments.csproj" />
+    <Project Path="src/Modules/Atlas.Control.Modules.CatalogOperations/Atlas.Control.Modules.CatalogOperations.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Atlas.Control.Architecture.Tests/Atlas.Control.Architecture.Tests.csproj" />
+    <Project Path="tests/Atlas.Control.Host.Tests/Atlas.Control.Host.Tests.csproj" />
+  </Folder>
+</Solution>

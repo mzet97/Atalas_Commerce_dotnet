@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Atlas Commerce",
+  "classifications": ["Atlas", "Worker"],
+  "identity": "Atlas.DotnetWorker",
+  "name": "Atlas .NET Worker Service (BackgroundService)",
+  "shortName": "atlas-worker",
+  "tags": { "language": "C#", "type": "project" },
+  "symbols": {
+    "worker-name": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Atlas.Worker",
+      "replaces": "__WORKER__",
+      "description": "Namespace do worker"
+    }
+  }
+}

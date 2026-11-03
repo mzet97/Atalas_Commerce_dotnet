@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package atlas.offers.v1;
+
+// Contrato Admin → Offers owner. Draft v1 (SPEC-002).
+
+option csharp_namespace = "Atlas.Contracts.Offers.V1";
+
+service OffersOwnerService {
+  rpc PublishOffer(PublishOfferRequest) returns (PublishOfferResponse);
+  rpc GetActiveOffer(GetActiveOfferRequest) returns (GetActiveOfferResponse);
+}
+
+message PublishOfferRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string approval_token = 3;   // obrigatório acima do limite de desconto
+  string sku_id = 4;
+  string seller_id = 5;        // 1P = seller da plataforma
+  string market_id = 6;
+  string channel = 7;
+  string currency = 8;         // ISO 4217
+  int64 price_minor = 9;       // INV-MONEY-001
+  int64 list_price_minor = 10;
+  string valid_from = 11;      // RFC3339 UTC
+  string valid_to = 12;
+  string correlation_id = 13;
+}
+
+message PublishOfferResponse {
+  bool accepted = 1;
+  string offer_id = 2;
+  int64 aggregate_version = 3;
+  string reason = 4;           // ex.: escopo já possui oferta ativa
+}
+
+message GetActiveOfferRequest {
+  string sku_id = 1;
+  string market_id = 2;
+  string channel = 3;
+  string currency = 4;
+}
+
+message GetActiveOfferResponse {
+  string offer_id = 1;
+  int64 price_minor = 2;
+  string valid_to = 3;
+  int64 aggregate_version = 4;
+}

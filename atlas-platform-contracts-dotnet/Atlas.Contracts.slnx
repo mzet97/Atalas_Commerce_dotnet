@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Atlas.Contracts.Events/Atlas.Contracts.Events.csproj" />
+    <Project Path="src/Atlas.Contracts.Grpc/Atlas.Contracts.Grpc.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Atlas.Contracts.Events.Tests/Atlas.Contracts.Events.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Domain: C# puro, zero dependências de framework (ADR-0001; teste de arquitetura guardará isso) -->
+</Project>

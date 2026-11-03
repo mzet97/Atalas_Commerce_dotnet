@@ -1,0 +1,6 @@
+@Atlas.Gateway_HostAddress = http://localhost:5129
+
+GET {{Atlas.Gateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

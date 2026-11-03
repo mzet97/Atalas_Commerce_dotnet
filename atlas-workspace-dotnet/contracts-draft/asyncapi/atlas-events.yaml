@@ -1,0 +1,58 @@
+asyncapi: 3.0.0
+info:
+  title: Atlas Commerce Domain Events
+  version: 0.1.0-draft
+  description: >
+    Eventos de domínio publicados via outbox→CDC (ADR-0003). Envelope canônico em
+    jsonschema/domain-event.schema.json (INV-EVT-001). Tópicos por bounded context (ADR-0018).
+    Semântica at-least-once; consumers devem ser idempotentes (inbox).
+servers:
+  local:
+    host: localhost:9092
+    protocol: kafka
+channels:
+  atlas.catalog.v1:
+    address: atlas.catalog.v1
+    messages:
+      product.published:
+        $ref: '#/components/messages/domainEvent'
+      product.updated:
+        $ref: '#/components/messages/domainEvent'
+  atlas.offers.v1:
+    address: atlas.offers.v1
+    messages:
+      offer.published: { $ref: '#/components/messages/domainEvent' }
+      price.changed: { $ref: '#/components/messages/domainEvent' }
+  atlas.inventory.v1:
+    address: atlas.inventory.v1
+    messages:
+      stock.adjusted: { $ref: '#/components/messages/domainEvent' }
+      stock.reserved: { $ref: '#/components/messages/domainEvent' }
+      reservation.expired: { $ref: '#/components/messages/domainEvent' }
+  atlas.orders.v1:
+    address: atlas.orders.v1
+    messages:
+      order.placed: { $ref: '#/components/messages/domainEvent' }
+      order.confirmed: { $ref: '#/components/messages/domainEvent' }
+      order.cancelled: { $ref: '#/components/messages/domainEvent' }
+  atlas.payments.v1:
+    address: atlas.payments.v1
+    messages:
+      payment.authorized: { $ref: '#/components/messages/domainEvent' }
+      payment.captured: { $ref: '#/components/messages/domainEvent' }
+      payment.failed: { $ref: '#/components/messages/domainEvent' }
+      refunded: { $ref: '#/components/messages/domainEvent' }
+operations:
+  onProductPublished:
+    action: receive
+    channel: { $ref: '#/channels/atlas.catalog.v1' }
+components:
+  messages:
+    domainEvent:
+      name: DomainEvent
+      contentType: application/json
+      payload:
+        $ref: './jsonschema/domain-event.schema.json'
+      bindings:
+        kafka:
+          key: { type: string, description: aggregate_id }

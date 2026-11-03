@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Atlas Commerce",
+  "classifications": ["Atlas", "Web", "Service"],
+  "identity": "Atlas.AspnetMicroservice",
+  "name": "Atlas ASP.NET Core microservice (Clean/Hexagonal)",
+  "shortName": "atlas-microservice",
+  "tags": { "language": "C#", "type": "project" },
+  "symbols": {
+    "service-name": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Atlas.Service",
+      "replaces": "__SERVICE__",
+      "description": "Namespace raiz do serviço (ex.: Atlas.Offers)"
+    }
+  }
+}

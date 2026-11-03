@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="Grpc.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Atlas.Catalog.Domain\Atlas.Catalog.Domain.csproj" />
+    <ProjectReference Include="..\Atlas.Catalog.Application\Atlas.Catalog.Application.csproj" />
+    <ProjectReference Include="..\Atlas.Catalog.Infrastructure\Atlas.Catalog.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
+  </ItemGroup>
+</Project>

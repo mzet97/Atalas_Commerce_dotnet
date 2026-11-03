@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Build (warnaserror)
+        run: dotnet build Atlas.Storefront.slnx -warnaserror
+      - name: Test — Domain
+        run: dotnet test tests/Atlas.Catalog.Domain.Tests/Atlas.Catalog.Domain.Tests.csproj --no-build
+      - name: Test — Api
+        run: dotnet test tests/Atlas.Catalog.Api.Tests/Atlas.Catalog.Api.Tests.csproj --no-build
+      - name: Format
+        run: dotnet format Atlas.Storefront.slnx --verify-no-changes
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with: { path: ., format: cyclonedx-json }

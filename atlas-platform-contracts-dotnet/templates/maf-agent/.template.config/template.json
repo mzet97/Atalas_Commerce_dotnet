@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Atlas Commerce",
+  "classifications": ["Atlas", "AI"],
+  "identity": "Atlas.MafAgent",
+  "name": "Atlas MAF agent module (Microsoft Agent Framework, C#)",
+  "shortName": "atlas-maf-agent",
+  "tags": { "language": "C#", "type": "project" },
+  "symbols": {
+    "agent-name": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Atlas.Agents.MyAgent",
+      "replaces": "__AGENT__",
+      "description": "Namespace do agente"
+    }
+  }
+}

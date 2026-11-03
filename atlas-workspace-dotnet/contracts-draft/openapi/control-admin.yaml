@@ -1,0 +1,110 @@
+openapi: 3.1.0
+info:
+  title: Atlas Control Admin API (draft)
+  version: 0.1.0-draft
+  description: >
+    Borda do monólito Control (Angular → Control Host). Mutações de negócio viram comandos
+    autenticados aos owners (ADR-0001); ações de risco exigem four-eyes (INV-ADMIN-001).
+servers:
+  - url: https://control.atlas.local/api/v1
+security:
+  - oidcBearerAuth: [control.read]
+paths:
+  /catalog/products/drafts:
+    post:
+      summary: Cria rascunho de produto (REQ-CAT-001)
+      security: [ { oidcBearerAuth: [catalog:write] } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '201': { description: Rascunho criado (draft_id) }
+        '403': { $ref: '#/components/responses/Problem' }
+  /catalog/products/{productId}/submit-approval:
+    post:
+      summary: Submete publicação para aprovação (UC-005)
+      security: [ { oidcBearerAuth: [catalog:publish] } ]
+      parameters: [ { name: productId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [justification]
+              properties:
+                justification: { type: string, minLength: 10 }
+      responses:
+        '202': { description: Approval request criado (approval_id) }
+  /approvals/{approvalId}/decide:
+    post:
+      summary: Aprova/rejeita (four-eyes — requester≠approver, INV-ADMIN-001)
+      security: [ { oidcBearerAuth: [approvals:decide] } ]
+      parameters: [ { name: approvalId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string, minLength: 5 }
+      responses:
+        '200': { description: Decisão registrada e comando despachado se aprovado }
+        '409': { description: Self-approval negado ou estado inválido }
+  /inventory/positions:
+    get:
+      summary: Grade de inventário da projeção (REQ-ADM-004; comandos revalidam no owner)
+      security: [ { oidcBearerAuth: [inventory:read] } ]
+      parameters:
+        - { name: warehouse_id, in: query, schema: { type: string, format: uuid } }
+        - { name: sku_id, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+      responses:
+        '200':
+          description: Posições com freshness
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryPositionPage' }
+  /audit/actions:
+    get:
+      summary: Consulta de trilha de auditoria (somente leitura; auditor)
+      security: [ { oidcBearerAuth: [audit:read] } ]
+      parameters:
+        - { name: actor_sub, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Registros auditáveis (hash encadeado)
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+components:
+  securitySchemes:
+    oidcBearerAuth:
+      type: openIdConnect
+      openIdConnectUrl: https://keycloak.atlas.local/realms/atlas/.well-known/openid-configuration
+  responses:
+    Problem:
+      description: Problema estruturado com correlationId
+      content:
+        application/problem+json:
+          schema: { type: object, additionalProperties: true }
+  schemas:
+    InventoryPositionPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              warehouse_id: { type: string, format: uuid }
+              sku_id: { type: string, format: uuid }
+              on_hand: { type: integer }
+              reserved: { type: integer }
+              available: { type: integer }
+              source_version: { type: integer }
+              projected_at: { type: string, format: date-time }
+        projection_lag_seconds: { type: number }

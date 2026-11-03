@@ -1,0 +1,49 @@
+%% NOVO (edição .NET) — C4 Container (nível 2). Serviços surgem por milestone (ADR-0013).
+flowchart TB
+    subgraph STOREFRONT[atlas-storefront-dotnet - repo A]
+      NX[apps/storefront-next<br/>Next.js TS App Router]
+      GW[src/Gateway - YARP/BFF<br/>borda HTTP, rate limit, OIDC]
+      CAT[Services/Catalog<br/>ASP.NET Core 10]
+      OFF[Services/Offers]
+      INVS[Services/Inventory]
+      CARTS[Services/Cart - M3]
+      CHKS[Services/Checkout - saga - M3]
+      ORDS[Services/Orders - M3]
+      PAYS[Services/Payments - M3]
+      AI[src/AI/ShoppingAssistant<br/>MAF C# - M7]
+      WRK[Workers: Projections, Notifications, Reconciliation]
+    end
+    subgraph CONTROL[atlas-control-dotnet - repo B]
+      ANG[apps/control-angular]
+      HOST[src/Atlas.Control.Host - monólito modular<br/>Modules: CatalogOps, InventoryOps, PricingOps, Approvals, Audit, Reporting]
+    end
+    subgraph CONTRACTS[atlas-platform-contracts-dotnet - repo C]
+      PROTO[contracts: proto/openapi/asyncapi]
+      TPL[templates: dotnet new]
+      INFRA[infrastructure: compose/iam/telemetry/helm]
+    end
+    subgraph DATA
+      MONGO[(MongoDB replica set<br/>write por owner + outbox)]
+      PG[(PostgreSQL<br/>read models)]
+      REDIS[(Redis cache-aside)]
+      KAFKA[[Kafka eventos CDC]]
+      RABBIT[[RabbitMQ tasks]]
+      KC[(Keycloak)]
+    end
+    NX --> GW
+    ANG --> HOST
+    GW --> CAT & OFF & INVS & CARTS & CHKS & AI
+    CHKS --> INVS & ORDS & PAYS
+    HOST -->|gRPC autenticado| CAT & OFF & INVS
+    CAT & OFF & INVS & ORDS & PAYS --> MONGO
+    MONGO -->|Debezium CDC outbox| KAFKA
+    KAFKA --> WRK --> PG
+    GW & HOST --> PG
+    GW --> REDIS
+    KAFKA -->|bridge idempotente| RABBIT --> WRK
+    AI -->|tools read-only| GW
+    GW & HOST & AI -.-> KC
+    style STOREFRONT fill:#f4f8ff,stroke:#3a6ea5
+    style CONTROL fill:#f4fff4,stroke:#4a7c4a
+    style CONTRACTS fill:#fff8f0,stroke:#a57c3a
+    style DATA fill:#f9f4ff,stroke:#6a4a8a

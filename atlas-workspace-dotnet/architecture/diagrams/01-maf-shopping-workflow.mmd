@@ -1,0 +1,18 @@
+flowchart TB
+  U[Customer request + auth context] --> V[Authorize scope and validate input]
+  V --> T[MAF C# Intent Executor]
+  T --> S[MAF Tool: Catalog read-only search]
+  S --> O[MAF Tool: Offer/stock/shipping read-only]
+  O --> C[MAF Comparison Executor]
+  C --> R[Grounded recommendation with IDs, timestamps, TTL]
+  R --> D{Customer requests cart change?}
+  D -- No --> Z[Display recommendation / links]
+  D -- Yes --> P[Create INERT cart proposal]
+  P --> H{Trusted Next.js explicit approval?}
+  H -- No/Expired --> X[No mutation]
+  H -- Yes --> B[Server validates subject + nonce + payload hash]
+  B -->|Authorized| CART[Call Cart ASP.NET Core owner]
+  B -->|Denied| X
+  CART --> CH[Redirect to normal checkout; requote]
+  V -.-> F[Model unavailable: normal search fallback]
+  R -.-> F

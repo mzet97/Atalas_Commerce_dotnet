@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/contracts/domain-event.schema.json",
+  "title": "Atlas Domain Event Envelope (INV-EVT-001)",
+  "type": "object",
+  "required": [
+    "event_id", "event_type", "aggregate_id", "aggregate_version",
+    "occurred_at", "schema_version", "correlation_id"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "description": "UUID único; base de dedup (inbox)" },
+    "event_type": { "type": "string", "pattern": "^[A-Z][A-Za-z]+\\.[A-Z][A-Za-z]+V[0-9]+$", "description": "Aggregate.ActionVn (ADR-0018), ex.: Product.PublishedV1" },
+    "aggregate_id": { "type": "string", "description": "Kafka key; ordem por agregado" },
+    "aggregate_version": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "correlation_id": { "type": "string" },
+    "causation_id": { "type": ["string", "null"] },
+    "tenant_id": { "type": ["string", "null"], "description": "presente quando multi-tenant (3P)" },
+    "traceparent": { "type": ["string", "null"], "description": "W3C Trace Context" },
+    "actor_sub": { "type": ["string", "null"], "description": "subject causador (sem PII além do sub)" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

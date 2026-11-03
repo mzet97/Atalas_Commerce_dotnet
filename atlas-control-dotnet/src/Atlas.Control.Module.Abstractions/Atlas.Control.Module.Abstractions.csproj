@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Contrato in-process de módulos do monólito Control (ADR-0001: in-process DENTRO do host) -->
+</Project>

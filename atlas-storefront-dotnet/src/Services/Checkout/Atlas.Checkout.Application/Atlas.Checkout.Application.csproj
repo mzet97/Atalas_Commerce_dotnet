@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Atlas.Checkout.Domain\Atlas.Checkout.Domain.csproj" />
+    <ProjectReference Include="..\..\Orders\Atlas.Orders.Domain\Atlas.Orders.Domain.csproj" />
+    <ProjectReference Include="..\..\Payments\Atlas.Payments.Domain\Atlas.Payments.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Atlas.Offers.Application\Atlas.Offers.Application.csproj" />
+    <ProjectReference Include="..\Atlas.Offers.Domain\Atlas.Offers.Domain.csproj" />
+  </ItemGroup>
+</Project>

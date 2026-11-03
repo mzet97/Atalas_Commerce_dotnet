@@ -1,0 +1,41 @@
+flowchart TB
+  C[Customer browser] --> N[Next.js Storefront]
+  O[Admin operator] --> A[Angular Control Portal]
+  N --> G[ASP.NET Core 10 Gateway/BFF - if justified]
+  G --> CAT[Catalog ASP.NET Core 10]
+  G --> OFF[Offers ASP.NET Core 10]
+  G --> CART[Cart ASP.NET Core 10]
+  G --> CHECK[Checkout ASP.NET Core 10]
+  CHECK --> INV[Inventory ASP.NET Core 10]
+  CHECK --> PAY[Payments ASP.NET Core 10]
+  CAT --> MC[(MongoDB owners + outbox)]
+  INV --> MI[(MongoDB owners + outbox)]
+  PAY --> MP[(MongoDB owners + outbox)]
+  A --> ADM[ASP.NET Core 10 Control Modular Monolith]
+  ADM -->|Authenticated gRPC command| CAT
+  ADM -->|Authenticated gRPC command| OFF
+  ADM -->|Authenticated gRPC command| INV
+  ADM --> MA[(Control own MongoDB)]
+  MC --> CDC[Mongo Change Streams / CDC]
+  MI --> CDC
+  MP --> CDC
+  CDC --> K[(Kafka)]
+  K --> PR[C# Projection Workers]
+  PR --> PG[(PostgreSQL read models)]
+  G --> PG
+  G --> R[(Redis cache)]
+  G --> AI[Microsoft Agent Framework C# Assistant]
+  AI -->|Typed read-only tools| CAT
+  AI -->|Typed read-only tools| OFF
+  AI -->|Proposal ONLY| G
+  G -->|UI-approved cart command| CART
+  K --> TASK[.NET Task Bridge]
+  TASK --> Q[(RabbitMQ)]
+  Q --> W[.NET Worker Services]
+  IAM[Keycloak OIDC + workload identity] -.-> G
+  IAM -.-> ADM
+  IAM -.-> AI
+  OT[OpenTelemetry + Grafana stack] -.-> G
+  OT -.-> ADM
+  OT -.-> PR
+  OT -.-> AI

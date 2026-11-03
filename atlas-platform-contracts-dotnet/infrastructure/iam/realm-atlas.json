@@ -1,0 +1,169 @@
+{
+  "realm": "atlas",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "roles": {
+    "realm": [
+      {
+        "name": "customer",
+        "description": "Cliente da loja"
+      },
+      {
+        "name": "catalog_editor",
+        "description": "Gestor de catálogo (REQ-IAM)"
+      },
+      {
+        "name": "pricing_manager",
+        "description": "Gestor de preços"
+      },
+      {
+        "name": "inventory_operator",
+        "description": "Operador de estoque"
+      },
+      {
+        "name": "fulfillment_operator",
+        "description": "Operador de fulfillment"
+      },
+      {
+        "name": "finance_analyst",
+        "description": "Analista financeiro"
+      },
+      {
+        "name": "support_agent",
+        "description": "Atendimento"
+      },
+      {
+        "name": "auditor",
+        "description": "Auditor somente leitura"
+      },
+      {
+        "name": "iam_admin",
+        "description": "Superadmin IAM (MFA obrigatório)"
+      },
+      {
+        "name": "approver",
+        "description": "Aprovador four-eyes (INV-ADMIN-001)"
+      },
+      {
+        "name": "atlas-service",
+        "description": "Identidade de workload interna (gRPC owners)"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "storefront-next",
+      "name": "Storefront Next.js",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "oauth2.device.authorization.grant.enabled": "false"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "roles"
+      ]
+    },
+    {
+      "clientId": "control-angular",
+      "name": "Control Angular",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4200/*",
+        "http://127.0.0.1:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "roles"
+      ]
+    },
+    {
+      "clientId": "atlas-services",
+      "name": "Workload interna dos serviços",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "atlas-services-dev-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "roles",
+        "basic"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "atlas-admin",
+      "enabled": true,
+      "email": "admin@atlas.local",
+      "firstName": "Atlas",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "atlas-admin-dev-pass",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
+      "realmRoles": [
+        "iam_admin",
+        "approver"
+      ],
+      "attributes": {
+        "mfa_required": [
+          "true"
+        ]
+      }
+    },
+    {
+      "username": "customer-smoke",
+      "enabled": true,
+      "email": "smoke@atlas.local",
+      "firstName": "Smoke",
+      "lastName": "Client",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "customer-smoke-pass",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "realmRoles": [
+        "customer"
+      ]
+    }
+  ]
+}

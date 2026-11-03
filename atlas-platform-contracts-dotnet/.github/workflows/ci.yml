@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Build
+        run: dotnet build Atlas.Contracts.slnx -warnaserror
+      - name: Test
+        run: dotnet test tests/Atlas.Contracts.Events.Tests/Atlas.Contracts.Events.Tests.csproj --no-build
+      - name: Format
+        run: dotnet format Atlas.Contracts.slnx --verify-no-changes
+      - name: Setup buf
+        uses: bufbuild/buf-action@v1
+        with: { setup_only: true }
+      - name: Buf lint
+        run: buf lint
+      - name: Buf breaking (contra o commit anterior)
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=${{ github.base_ref }},subdir=contracts"
+      - name: Testar templates dotnet new (geração desde pasta vazia + build)
+        run: |
+          set -e
+          dotnet new install ./templates
+          mkdir /tmp/tpl && cd /tmp/tpl
+          dotnet new atlas-microservice -o svc --service-name Atlas.Offers && (cd svc && dotnet build AtlasService.slnx -warnaserror && dotnet test tests/Service.Domain.Tests/Service.Domain.Tests.csproj --no-build)
+          dotnet new atlas-module -o mod --module-name Atlas.Control.Modules.Reporting && (cd mod && dotnet build)
+          dotnet new atlas-worker -o wrk --worker-name Atlas.Workers.Projections && (cd wrk && dotnet build)
+          dotnet new atlas-maf-agent -o agt --agent-name Atlas.Agents.Shopping && (cd agt && dotnet build)
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with: { path: ., format: cyclonedx-json }

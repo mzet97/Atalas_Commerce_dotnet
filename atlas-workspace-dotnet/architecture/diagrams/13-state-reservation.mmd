@@ -1,0 +1,19 @@
+%% NOVO (edição .NET) — Máquina de estados da Reservation (Inventory Service).
+stateDiagram-v2
+    [*] --> Active : ReserveStock idempotente aceito (CAS em StockPosition)
+    Active --> Confirmed : ConfirmReservation(order_id)
+    Active --> Released : ReleaseReservation (falha de pagamento/cancelamento)
+    Active --> Expiring : TTL expira (job de domínio)
+    Expiring --> Expired : transição explícita devolve saldo ao on_hand
+    Confirmed --> Consumed : baixa no fulfillment (M6)
+    Confirmed --> Released : cancelamento pós-confirmação (compensação)
+    Confirmed --> [*] : reserva confirmada NÃO expira por TTL
+    Released --> [*]
+    Expired --> [*]
+    Consumed --> [*]
+
+    note right of Active
+        Mesma idempotency key retorna a MESMA
+        reserva (INV-STOCK-003); TTL nunca é a
+        única forma de devolver saldo (INV-STOCK-002).
+    end note

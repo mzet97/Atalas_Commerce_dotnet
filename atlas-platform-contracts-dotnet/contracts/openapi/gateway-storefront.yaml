@@ -1,0 +1,177 @@
+openapi: 3.1.0
+info:
+  title: Atlas Storefront Gateway/BFF API (draft)
+  version: 0.1.0-draft
+  description: >
+    Borda pública HTTP/JSON do Storefront (ADR-0014). Leitura de projeções (CQRS — leituras
+    nunca decidem pagamento/estoque final, INV-CQRS-001). Erros em ProblemDetails (RFC 9457).
+servers:
+  - url: https://storefront.atlas.local/api/v1
+security:
+  - oidcBearerAuth: [storefront.read]
+paths:
+  /catalog/products:
+    get:
+      summary: Busca de produtos com facetas (REQ-DSC-001)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: locale, in: query, required: true, schema: { type: string, enum: [pt-BR, en-US, es-ES] } }
+        - { name: market, in: query, required: true, schema: { type: string, enum: [BR, US, EU] } }
+        - { name: category, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, maximum: 100, default: 24 } }
+      responses:
+        '200':
+          description: Página de resultados + facetas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductSearchPage' }
+        '429': { $ref: '#/components/responses/Problem' }
+  /catalog/products/{productId}:
+    get:
+      summary: Detalhe do produto (PDP)
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: locale, in: query, required: true, schema: { type: string } }
+        - { name: market, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Produto publicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /cart/quote:
+    post:
+      summary: Gera cotação congelada com TTL (REQ-CHK-001, INV-QUOTE-001)
+      security: [ { oidcBearerAuth: [storefront.cart] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteRequest' }
+      responses:
+        '201':
+          description: Cotação criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PriceQuote' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /checkout:
+    post:
+      summary: Submete checkout idempotente (REQ-CHK-002/003)
+      security: [ { oidcBearerAuth: [storefront.checkout] } ]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitCheckoutRequest' }
+      responses:
+        '200': { description: Resultado CONFIRMED ou PENDING anterior (idempotente) }
+        '202':
+          description: "PENDING (ex. PSP UNKNOWN) — referência de pedido"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutResult' }
+        '402': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    oidcBearerAuth:
+      type: openIdConnect
+      openIdConnectUrl: https://keycloak.atlas.local/realms/atlas/.well-known/openid-configuration
+  responses:
+    Problem:
+      description: Erro estruturado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+    Money:
+      type: object
+      required: [amount_minor, currency]
+      properties:
+        amount_minor: { type: integer, format: int64 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+    ProductSearchPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ProductSummary' } }
+        facets: { type: object, additionalProperties: true }
+        page: { type: integer }
+        total: { type: integer }
+        source_version: { type: integer, description: versão da projeção }
+    ProductSummary:
+      type: object
+      properties:
+        product_id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        offer_hint: { $ref: '#/components/schemas/OfferHint' }
+    OfferHint:
+      type: object
+      description: Dica não autoritativa (availability_hint não confirma saldo)
+      properties:
+        offer_id: { type: string, format: uuid }
+        price: { $ref: '#/components/schemas/Money' }
+        availability_hint: { type: string, enum: [in_stock, low, out_of_stock, unknown] }
+    ProductDetail:
+      type: object
+      properties:
+        product_id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        locale_fallback_used: { type: boolean }
+        skus: { type: array, items: { $ref: '#/components/schemas/SkuView' } }
+    SkuView:
+      type: object
+      properties:
+        sku_id: { type: string, format: uuid }
+        sku_code: { type: string }
+        variant_attributes: { type: object, additionalProperties: { type: string } }
+    QuoteRequest:
+      type: object
+      required: [lines, destination]
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku_id, quantity]
+            properties:
+              sku_id: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1, maximum: 99 }
+        destination: { type: object, properties: { country: { type: string }, postal_code: { type: string } } }
+    PriceQuote:
+      type: object
+      properties:
+        quote_id: { type: string, format: uuid }
+        version: { type: integer }
+        total: { $ref: '#/components/schemas/Money' }
+        breakdown: { type: object, additionalProperties: true }
+        expires_at: { type: string, format: date-time }
+    SubmitCheckoutRequest:
+      type: object
+      required: [quote_id]
+      properties:
+        quote_id: { type: string, format: uuid }
+        payment_method: { type: string, enum: [simulated_card, boleto_simulated] }
+        shipping_address: { type: object, additionalProperties: true }
+    CheckoutResult:
+      type: object
+      required: [status, order_reference]
+      properties:
+        status: { type: string, enum: [CONFIRMED, PENDING, REJECTED] }
+        order_reference: { type: string }
+        reason: { type: string }

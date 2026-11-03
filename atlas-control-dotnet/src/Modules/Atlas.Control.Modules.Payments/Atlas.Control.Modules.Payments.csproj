@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\Atlas.Control.Module.Abstractions\Atlas.Control.Module.Abstractions.csproj" />
+    <ProjectReference Include="..\Atlas.Control.Modules.Approvals\Atlas.Control.Modules.Approvals.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

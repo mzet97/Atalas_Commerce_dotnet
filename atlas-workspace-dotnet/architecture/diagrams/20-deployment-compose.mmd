@@ -1,0 +1,46 @@
+%% NOVO (edição .NET) — Deployment local: Docker Compose com profiles progressivos (ADR-0010).
+flowchart LR
+    subgraph PROFILE_CORE[profile core]
+      GW[gateway/bff]
+      CAT[catalog.api]
+      OFF[offers.api]
+      INV[inventory.api]
+      CTL[control.host]
+    end
+    subgraph PROFILE_DATA[profile data]
+      MONGO[(mongo1..3 - replica set OBRIGATÓRIO para transações/change streams)]
+      PG[(postgres - read models)]
+      REDIS[(redis - cache)]
+    end
+    subgraph PROFILE_MESSAGING[profile messaging]
+      KAFKA[[kafka + zookeeper/kraft]]
+      CONNECT[kafka-connect + Debezium mongo connector]
+      RABBIT[[rabbitmq quorum queues]]
+    end
+    subgraph PROFILE_OBSERVABILITY[profile observability]
+      OTEL[otel-collector]
+      PROM[prometheus]
+      LOKI[loki]
+      TEMPO[tempo]
+      GRAF[grafana dashboards]
+    end
+    subgraph PROFILE_AI[profile ai]
+      AI[shopping-assistant]
+      OLLAMA[ollama opcional - provider local]
+    end
+    subgraph PROFILE_SIM[profile simulated-external]
+      PSPFAKE[psp-fake determinístico]
+      CARRIERFAKE[carrier-fake]
+    end
+    KC[keycloak - profile core]
+    GW & CAT & OFF & INV & CTL --> MONGO
+    GW & CTL --> PG & KC
+    MONGO --> CONNECT --> KAFKA
+    KAFKA --> PROJWORKERS[projection workers]
+    PROJWORKERS --> PG
+    KAFKA --> BRIDGE[task bridge] --> RABBIT
+    GW --> REDIS
+    AI --> OLLAMA
+    GW & CAT & OFF & INV & CTL & PROJWORKERS --> OTEL --> PROM & LOKI & TEMPO --> GRAF
+    PAYSVC[payments.api - M3] --> PSPFAKE
+    CTL --> CARRIERFAKE

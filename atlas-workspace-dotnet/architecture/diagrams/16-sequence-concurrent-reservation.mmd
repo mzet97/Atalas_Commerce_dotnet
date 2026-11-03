@@ -1,0 +1,28 @@
+%% NOVO (edição .NET) — Contenda pela última unidade (UC003-T01 / INV-STOCK-001).
+sequenceDiagram
+    autonumber
+    actor A as Cliente A
+    actor B as Cliente B
+    participant CHK as Checkout Service
+    participant INV as Inventory Service (owner)
+    participant PGC as PostgreSQL (projeção atrasada)
+    A->>PGC: lê available=1 (hint)
+    B->>PGC: lê available=1 (hint)
+    par A
+        A->>CHK: SubmitCheckout(idempotency_key_A)
+        CHK->>INV: ReserveStock(checkout_A, SKU, 1)
+    and B
+        B->>CHK: SubmitCheckout(idempotency_key_B)
+        CHK->>INV: ReserveStock(checkout_B, SKU, 1)
+    end
+    INV->>INV: Transação Mongo: filtro (available>=1) + CAS version
+    alt A vence a corrida atômica
+        INV-->>CHK: ReservationId_A ACTIVE
+        INV-->>CHK: OUT_OF_STOCK para B
+    else B vence
+        INV-->>CHK: ReservationId_B ACTIVE
+        INV-->>CHK: OUT_OF_STOCK para A
+    end
+    Note over INV: on_hand=1, reserved=1, available=0 — nunca negativo.<br/>Redis/PG/Kafka NÃO decidem disponibilidade (INV-CQRS-001).
+    CHK-->>A: segue para pagamento (quote vigente)
+    CHK-->>B: 409 re-cotação ou alternativas

@@ -1,0 +1,29 @@
+%% NOVO (edição .NET) — C4 Context (nível 1).
+flowchart TB
+    subgraph PEOPLE
+      CUST[Cliente / Visitante]
+      OPS[Operadores Admin: catalog_editor, pricing_manager, inventory_operator, finance_analyst, auditor, iam_admin...]
+      SRE[SRE / Operação]
+    end
+    subgraph SYSTEMS
+      STORE[Atlas Storefront .NET<br/>Next.js + microserviços ASP.NET Core 10<br/>+ MAF Shopping Assistant]
+      CTRL[Atlas Control .NET<br/>Angular + monólito modular ASP.NET Core 10]
+      CTRC[atlas-platform-contracts-dotnet<br/>contratos wire versionados]
+    end
+    subgraph EXTERNAL
+      PSP[PSP - sandbox/fake<br/>determinístico]
+      CARRIER[Transportadoras<br/>adapter fake M6]
+      IAM[Keycloak<br/>OIDC/RBAC/ABAC]
+      LLM[Provider de modelo<br/>Ollama local opcional / cloud com budget]
+    end
+    CUST -->|HTTPS| STORE
+    OPS -->|HTTPS| CTRL
+    SRE -->|HTTPS/dashboards| CTRL
+    STORE <-->|gRPC/OpenAPI| CTRC
+    CTRL <-->|contratos| CTRC
+    STORE -->|authorize/capture/refund| PSP
+    STORE -->|quotes/labels/tracking| CARRIER
+    STORE & CTRL -->|OIDC| IAM
+    STORE -->|IChatClient| LLM
+    CTRL -->|comandos autenticados aos owners| STORE
+    style SYSTEMS fill:#f4f5f9,stroke:#666

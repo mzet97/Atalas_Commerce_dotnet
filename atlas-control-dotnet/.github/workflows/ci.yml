@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Build (warnaserror)
+        run: dotnet build Atlas.Control.slnx -warnaserror
+      - name: Test — Architecture
+        run: dotnet test tests/Atlas.Control.Architecture.Tests/Atlas.Control.Architecture.Tests.csproj --no-build
+      - name: Test — Host
+        run: dotnet test tests/Atlas.Control.Host.Tests/Atlas.Control.Host.Tests.csproj --no-build
+      - name: Format
+        run: dotnet format Atlas.Control.slnx --verify-no-changes
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with: { path: ., format: cyclonedx-json }

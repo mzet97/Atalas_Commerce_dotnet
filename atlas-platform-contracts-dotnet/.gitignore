@@ -1,0 +1,10 @@
+bin/
+obj/
+artifacts/
+node_modules/
+*.user
+.vs/
+.idea/
+TestResults/
+coverage/
+results/*/

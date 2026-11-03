@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package atlas.inventory.v1;
+
+// Contrato Admin/Checkout → Inventory owner. Draft v1 (SPEC-002/003).
+// Reservas são CAS + idempotentes (INV-STOCK-001/003).
+
+option csharp_namespace = "Atlas.Contracts.Inventory.V1";
+
+service InventoryOwnerService {
+  rpc ReceiveStock(ReceiveStockRequest) returns (ReceiveStockResponse);
+  rpc AdjustStock(AdjustStockRequest) returns (AdjustStockResponse);
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+  rpc ConfirmReservation(ConfirmReservationRequest) returns (ConfirmReservationResponse);
+  rpc ReleaseReservation(ReleaseReservationRequest) returns (ReleaseReservationResponse);
+}
+
+message ReceiveStockRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string approval_token = 3; // obrigatório acima de limite (four-eyes)
+  string warehouse_id = 4;
+  string sku_id = 5;
+  int32 quantity = 6;
+  string reason = 7;
+  string correlation_id = 8;
+}
+
+message AdjustStockRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string approval_token = 3;
+  string warehouse_id = 4;
+  string sku_id = 5;
+  int32 delta = 6;           // negativo permitido até available
+  string reason = 7;
+  string correlation_id = 8;
+}
+
+message ReceiveStockResponse {
+  bool accepted = 1;
+  string movement_id = 2;
+  int64 position_version = 3;
+  string reason = 4;
+}
+
+message AdjustStockResponse {
+  bool accepted = 1;
+  string movement_id = 2;
+  int64 position_version = 3;
+  string reason = 4;
+}
+
+message ReserveStockRequest {
+  string request_id = 1;      // = idempotency key (checkout_id)
+  string checkout_id = 2;
+  repeated ReserveLine lines = 3;
+  int32 ttl_seconds = 4;      // ADR-0016
+}
+
+message ReserveLine {
+  string sku_id = 1;
+  string warehouse_id = 2;    // vazio = política padrão do owner
+  int32 quantity = 3;
+}
+
+message ReserveStockResponse {
+  bool granted = 1;
+  string reservation_id = 2;
+  int64 position_version = 3;
+  repeated DeniedLine denied = 4;
+}
+
+message DeniedLine { string sku_id = 1; string cause = 2; }
+
+message ConfirmReservationRequest { string request_id = 1; string reservation_id = 2; string order_id = 3; }
+message ConfirmReservationResponse { bool accepted = 1; string state = 2; string reason = 3; }
+message ReleaseReservationRequest { string request_id = 1; string reservation_id = 2; string order_id = 3; }
+message ReleaseReservationResponse { bool accepted = 1; string state = 2; string reason = 3; }
+message ReservationResponse { bool accepted = 1; string state = 2; string reason = 3; }

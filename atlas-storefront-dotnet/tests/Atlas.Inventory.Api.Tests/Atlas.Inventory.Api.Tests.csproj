@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Inventory\Atlas.Inventory.Api\Atlas.Inventory.Api.csproj" />
+    <ProjectReference Include="..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
+  </ItemGroup>
+</Project>

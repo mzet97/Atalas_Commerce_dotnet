@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Atlas Commerce",
+  "classifications": ["Atlas", "Module"],
+  "identity": "Atlas.ModularMonolithModule",
+  "name": "Atlas modular monolith module (Control)",
+  "shortName": "atlas-module",
+  "tags": { "language": "C#", "type": "project" },
+  "symbols": {
+    "module-name": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Atlas.Control.Modules.MyModule",
+      "replaces": "__MODULE__",
+      "description": "Namespace do módulo"
+    }
+  }
+}

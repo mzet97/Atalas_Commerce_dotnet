@@ -1,0 +1,12 @@
+# Repositórios de produto serão irmãos deste diretório, nunca conteúdo deste repo
+atlas-storefront-dotnet/
+atlas-control-dotnet/
+atlas-platform-contracts-dotnet/
+
+# Artefatos transitórios
+*.swp
+.DS_Store
+Thumbs.db
+node_modules/
+bin/
+obj/

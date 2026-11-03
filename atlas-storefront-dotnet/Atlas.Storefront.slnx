@@ -1,0 +1,69 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Gateway/">
+    <Project Path="src/Gateway/Atlas.Gateway/Atlas.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Catalog/">
+    <Project Path="src/Services/Catalog/Atlas.Catalog.Api/Atlas.Catalog.Api.csproj" />
+    <Project Path="src/Services/Catalog/Atlas.Catalog.Application/Atlas.Catalog.Application.csproj" />
+    <Project Path="src/Services/Catalog/Atlas.Catalog.Domain/Atlas.Catalog.Domain.csproj" />
+    <Project Path="src/Services/Catalog/Atlas.Catalog.Infrastructure/Atlas.Catalog.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Checkout/">
+    <Project Path="src/Services/Checkout/Atlas.Checkout.Api/Atlas.Checkout.Api.csproj" />
+    <Project Path="src/Services/Checkout/Atlas.Checkout.Application/Atlas.Checkout.Application.csproj" />
+    <Project Path="src/Services/Checkout/Atlas.Checkout.Domain/Atlas.Checkout.Domain.csproj" />
+    <Project Path="src/Services/Checkout/Atlas.Checkout.Infrastructure/Atlas.Checkout.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Inventory/">
+    <Project Path="src/Services/Inventory/Atlas.Inventory.Api/Atlas.Inventory.Api.csproj" />
+    <Project Path="src/Services/Inventory/Atlas.Inventory.Application/Atlas.Inventory.Application.csproj" />
+    <Project Path="src/Services/Inventory/Atlas.Inventory.Domain/Atlas.Inventory.Domain.csproj" />
+    <Project Path="src/Services/Inventory/Atlas.Inventory.Infrastructure/Atlas.Inventory.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Offers/">
+    <Project Path="src/Services/Offers/Atlas.Offers.Application/Atlas.Offers.Application.csproj" />
+    <Project Path="src/Services/Offers/Atlas.Offers.Domain/Atlas.Offers.Domain.csproj" />
+    <Project Path="src/Services/Offers/Atlas.Offers.Infrastructure/Atlas.Offers.Infrastructure.csproj" />
+    <Project Path="src/Services/Offers/Atlas.Offers.Api/Atlas.Offers.Api.csproj" />
+    <Project Path="src/Services/Fulfillment/Atlas.Fulfillment.Api/Atlas.Fulfillment.Api.csproj" />
+    <Project Path="src/Services/Fulfillment/Atlas.Fulfillment.Infrastructure/Atlas.Fulfillment.Infrastructure.csproj" />
+    <Project Path="src/Services/Fulfillment/Atlas.Fulfillment.Domain/Atlas.Fulfillment.Domain.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Orders/">
+    <Project Path="src/Services/Orders/Atlas.Orders.Domain/Atlas.Orders.Domain.csproj" />
+    <Project Path="src/Services/Orders/Atlas.Orders.Infrastructure/Atlas.Orders.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Payments/">
+    <Project Path="src/Services/Payments/Atlas.Payments.Domain/Atlas.Payments.Domain.csproj" />
+    <Project Path="src/Services/Payments/Atlas.Payments.Infrastructure/Atlas.Payments.Infrastructure.csproj" />
+    <Project Path="src/Services/Payments/Atlas.Payments.Api/Atlas.Payments.Api.csproj" />
+    <Project Path="src/Services/Payments/SimulatedPsp/SimulatedPsp.csproj" />
+  </Folder>
+  <Folder Name="/src/Workers/">
+    <Project Path="src/Workers/Atlas.Workers.Projections/Atlas.Workers.Projections.csproj" />
+    <Project Path="src/Workers/Atlas.Workers.Notifications/Atlas.Workers.Notifications.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Atlas.Catalog.Api.Tests/Atlas.Catalog.Api.Tests.csproj" />
+    <Project Path="tests/Atlas.Catalog.Domain.Tests/Atlas.Catalog.Domain.Tests.csproj" />
+    <Project Path="tests/Atlas.Catalog.IntegrationTests/Atlas.Catalog.IntegrationTests.csproj" />
+    <Project Path="tests/Atlas.Checkout.Api.Tests/Atlas.Checkout.Api.Tests.csproj" />
+    <Project Path="tests/Atlas.Payments.Api.Tests/Atlas.Payments.Api.Tests.csproj" />
+    <Project Path="tests/Atlas.Checkout.Application.Tests/Atlas.Checkout.Application.Tests.csproj" />
+    <Project Path="tests/Atlas.Checkout.Domain.Tests/Atlas.Checkout.Domain.Tests.csproj" />
+    <Project Path="tests/Atlas.Checkout.Infrastructure.Tests/Atlas.Checkout.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Atlas.Inventory.Api.Tests/Atlas.Inventory.Api.Tests.csproj" />
+    <Project Path="tests/Atlas.Inventory.Domain.Tests/Atlas.Inventory.Domain.Tests.csproj" />
+    <Project Path="tests/Atlas.Inventory.IntegrationTests/Atlas.Inventory.IntegrationTests.csproj" />
+    <Project Path="tests/Atlas.Offers.Domain.Tests/Atlas.Offers.Domain.Tests.csproj" />
+    <Project Path="tests/Atlas.Offers.IntegrationTests/Atlas.Offers.IntegrationTests.csproj" />
+    <Project Path="tests/Atlas.Orders.Domain.Tests/Atlas.Orders.Domain.Tests.csproj" />
+    <Project Path="tests/Atlas.Payments.Domain.Tests/Atlas.Payments.Domain.Tests.csproj" />
+    <Project Path="tests/Atlas.Workers.ProjectionTests/Atlas.Workers.ProjectionTests.csproj" />
+    <Project Path="tests/Atlas.Workers.Notifications.Tests/Atlas.Workers.Notifications.Tests.csproj" />
+    <Project Path="tests/SimulatedPsp.Tests/SimulatedPsp.Tests.csproj" />
+  </Folder>
+  <Project Path="../atlas-platform-contracts-dotnet/src/Atlas.Contracts.Grpc/Atlas.Contracts.Grpc.csproj" />
+</Solution>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Atlas.Inventory.Application\Atlas.Inventory.Application.csproj" />
+    <ProjectReference Include="..\Atlas.Inventory.Domain\Atlas.Inventory.Domain.csproj" />
+    <ProjectReference Include="..\Atlas.Inventory.Infrastructure\Atlas.Inventory.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
+  </ItemGroup>
+</Project>
