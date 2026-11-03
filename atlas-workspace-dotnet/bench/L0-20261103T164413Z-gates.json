@@ -1,0 +1,1 @@
+{"run":"L0","rate":50,"duration":"10m","gates":{"http_errors_pct":"<0.1","p95_ms":"<1500","oversell":0,"duplicate_paid_order":0},"frozen_utc":"2026-11-03"}

@@ -7,7 +7,7 @@ export const options = {
     constant: { executor: "constant-arrival-rate", rate: __ENV.RATE ? Number(__ENV.RATE) : 50,
                 timeUnit: "1s", duration: __ENV.DURATION || "10m", preAllocatedVUs: 100, maxVUs: 400 },
   },
-  thresholds: { http_failed_send: ["count<100"], "http_req_duration{scenario:constant}": ["p(95)<1500"] },
+  thresholds: { http_req_failed: ["rate<0.001"], "http_req_duration": ["p(95)<1500"] },
 };
 const BFF = __ENV.BFF || "http://127.0.0.1:5180";
 export default function () {

@@ -41,6 +41,9 @@ builder.Services.AddSingleton<IPspReconciliationPort>(sp =>
         sp.GetRequiredService<IConfiguration>()["Psp:Url"] ?? "http://127.0.0.1:5399"));
 builder.Services.AddSingleton<IOrderReconciliationStore>(sp => new OrdersReconciliationAdapter(sp.GetRequiredService<Atlas.Orders.Infrastructure.MongoOrdersStore>()));
 builder.Services.AddSingleton<IPaymentReconciliationStore>(sp => new PaymentsReconciliationAdapter(sp.GetRequiredService<Atlas.Payments.Infrastructure.MongoPaymentsStore>()));
+builder.Services.AddSingleton<Atlas.Checkout.Application.IWorkerLease>(sp =>
+    new Atlas.Checkout.Application.MongoWorkerLease(
+        new MongoDB.Driver.MongoClient(mongoConn).GetDatabase(mongoCheckoutDb)));
 builder.Services.AddHostedService<ReconciliationHostedService>();
 
 var app = builder.Build();

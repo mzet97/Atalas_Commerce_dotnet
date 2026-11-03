@@ -25,6 +25,7 @@ public sealed class CheckoutReconcilerTests
         public List<(Guid OrderId, string Reason)> Cancelled { get; } = [];
         public List<(string Key, string Ref)> Authorized { get; } = [];
         public List<string> Voided { get; } = [];
+        public List<string> Captured { get; } = [];
         public List<string> Released { get; } = [];
 
         public Task<bool> ConfirmOrderAsync(Guid orderId, string paymentReference, CancellationToken ct)
@@ -33,6 +34,8 @@ public sealed class CheckoutReconcilerTests
         { Cancelled.Add((orderId, reason)); return Task.FromResult(true); }
         public Task<bool> AuthorizeIntentAsync(string key, string providerReference, CancellationToken ct)
         { Authorized.Add((key, providerReference)); return Task.FromResult(true); }
+        public Task<bool> CaptureIntentAsync(string key, CancellationToken ct)
+        { Captured.Add(key); return Task.FromResult(true); }
         public Task<bool> VoidIntentAsync(string key, CancellationToken ct)
         { Voided.Add(key); return Task.FromResult(true); }
     }

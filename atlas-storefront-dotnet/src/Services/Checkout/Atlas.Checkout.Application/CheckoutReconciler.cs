@@ -24,6 +24,7 @@ public interface IOrderReconciliationStore
 public interface IPaymentReconciliationStore
 {
     Task<bool> AuthorizeIntentAsync(string pspIdempotencyKey, string providerReference, CancellationToken ct);
+    Task<bool> CaptureIntentAsync(string pspIdempotencyKey, CancellationToken ct);
     Task<bool> VoidIntentAsync(string pspIdempotencyKey, CancellationToken ct);
 }
 
@@ -55,8 +56,9 @@ public sealed class CheckoutReconciler(
             switch (outcome)
             {
                 case ReconciliationOutcome.Paid when saga.OrderId is not null:
-                    // pago: confirma intent + order + saga (UC003-T03)
+                    // pago: confirma intent + captura + order + saga (UC003-T03; política de captura SPEC-006)
                     await paymentsReconciliation.AuthorizeIntentAsync(saga.IdempotencyKey, providerRef!, ct);
+                    await paymentsReconciliation.CaptureIntentAsync(saga.IdempotencyKey, ct);
                     if (saga.OrderId is not null && Guid.TryParse(saga.OrderId, out var orderId))
                         await ordersReconciliation.ConfirmOrderAsync(orderId, providerRef!, ct);
                     saga.MarkReconciliationPaid(saga.PaymentIntentId ?? "pi-reconciled", providerRef ?? "", DateTimeOffset.UtcNow);

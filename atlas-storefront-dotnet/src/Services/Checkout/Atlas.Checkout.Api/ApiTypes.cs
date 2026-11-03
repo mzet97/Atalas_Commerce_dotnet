@@ -85,6 +85,11 @@ public sealed class PaymentsReconciliationAdapter(MongoPaymentsStore inner) : IP
         inner.ApplyTransitionAsync(pspIdempotencyKey, PaymentIntentState.Unknown, PaymentIntentState.Authorized,
             providerReference, "Payment.AuthorizedV1", "reconciled", ct);
 
+    public async Task<bool> CaptureIntentAsync(string pspIdempotencyKey, CancellationToken ct) =>
+        await inner.ApplyTransitionAsync(pspIdempotencyKey, PaymentIntentState.Authorized, PaymentIntentState.Captured,
+            null, "Payment.CapturedV1", "reconciled", ct)
+        || true; // já Captured (idempotente)
+
     public Task<bool> VoidIntentAsync(string pspIdempotencyKey, CancellationToken ct) =>
         inner.ApplyTransitionAsync(pspIdempotencyKey, PaymentIntentState.Unknown, PaymentIntentState.AuthorizationVoided,
             null, "Payment.VoidedV1", "reconciled", ct);
@@ -96,6 +101,7 @@ public sealed class ReconciliationHostedService(
     IPaymentReconciliationStore paymentsReconciliation,
     IInventoryReservePort inventoryPort,
     IPspReconciliationPort pspReconciliation,
+    Atlas.Checkout.Application.IWorkerLease lease,
     Microsoft.Extensions.Configuration.IConfiguration config) : Microsoft.Extensions.Hosting.BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -108,6 +114,15 @@ public sealed class ReconciliationHostedService(
         {
             try
             {
+                // SPEC-004+: lease distribuída — multi-instância não duplica reconciliação
+                if (!await lease.TryAcquireAsync("checkout-reconciler",
+                        Environment.MachineName + "-" + Environment.ProcessId,
+                        TimeSpan.FromSeconds(stuckAfter.TotalSeconds), stoppingToken))
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    continue;
+                }
+
                 var pendingCount = (await sagaStore.FindByStateAsync(CheckoutSagaState.PendingReconciliation, stoppingToken)).Count;
                 if (pendingCount > 0)
                     Console.WriteLine($"[reconciler] {pendingCount} saga(s) pendentes, consultando PSP...");
