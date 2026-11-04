@@ -18,6 +18,10 @@ builder.Services.AddHttpClient("checkout", c => c.BaseAddress = new Uri(checkout
 builder.Services.AddHttpClient("catalog-owner", c => c.BaseAddress = new Uri(catalogUrl));
 builder.Services.AddHttpClient("inventory-owner", c => c.BaseAddress = new Uri(inventoryUrl));
 
+builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
+    StackExchange.Redis.ConnectionMultiplexer.Connect(
+        builder.Configuration["Redis:ConnectionString"] ?? "127.0.0.1:6379"));
+
 var app = builder.Build();
 app.MapHealthChecks("/health");
 
@@ -51,6 +55,12 @@ app.MapGet("/api/catalog/search", async (string? q, string? market, string? sku,
 {
     var pageEff = Math.Max(page ?? 1, 1);
     var sizeEff = Math.Clamp(pageSize ?? 12, 1, 50);
+    // CACHE-ASIDE Redis (SPEC-008 fatia 14): TTL 15s — leitura é HINT (INV-CQRS-001), nunca verdade
+    var redisDb = app.Services.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>().GetDatabase();
+    var cacheKey = $"search:{q ?? "*"}:{market ?? "*"}:{sku ?? "*"}:p{pageEff}";
+    var cached = await redisDb.StringGetAsync(cacheKey);
+    if (cached.HasValue)
+        return Results.Content(cached.ToString(), "application/json");
     await using var conn = new NpgsqlConnection(pgConn);
     await conn.OpenAsync(ct);
     var where = "WHERE status = 'Published' AND (CAST(@q AS text) IS NULL OR title ILIKE '%' || CAST(@q AS text) || '%') AND (CAST(@market AS text) IS NULL OR market_id = CAST(@market AS text)) AND (CAST(@sku AS text) IS NULL OR @sku = ANY(skus))";
@@ -83,7 +93,10 @@ app.MapGet("/api/catalog/search", async (string? q, string? market, string? sku,
         while (await r.ReadAsync(ct))
             items.Add(new { productId = r.GetGuid(0), title = r.GetString(1), marketId = r.GetString(2), status = r.GetString(3), sourceVersion = r.GetInt64(4) });
     }
-    return Results.Ok(new { items, total, page = pageEff, pageSize = sizeEff, facets });
+    var payload = System.Text.Json.JsonSerializer.Serialize(
+        new { items, total, page = pageEff, pageSize = sizeEff, facets });
+    await redisDb.StringSetAsync(cacheKey, payload, TimeSpan.FromSeconds(15));
+    return Results.Content(payload, "application/json");
 });
 
 // ---- M5: PDP com ofertas do market + hint de disponibilidade (UC-001/002) ----
