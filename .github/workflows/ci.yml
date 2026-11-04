@@ -5,7 +5,7 @@ on:
   pull_request: { branches: [main] }
 
 jobs:
-  storefront:
+  storefront-unit:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -16,16 +16,19 @@ jobs:
         with: { dotnet-version: '10.0.x' }
       - name: Build
         run: dotnet build Atlas.Storefront.slnx
-      - name: Test — Domain
-        run: dotnet test tests/Atlas.Catalog.Domain.Tests/Atlas.Catalog.Domain.Tests.csproj --no-build
-      - name: Test — Api
-        run: dotnet test tests/Atlas.Catalog.Api.Tests/Atlas.Catalog.Api.Tests.csproj --no-build
-      - name: Test — Checkout Application
-        run: dotnet test tests/Atlas.Checkout.Application.Tests/Atlas.Checkout.Application.Tests.csproj --no-build
-      - name: Test — Shopping Assistant (fake CI)
-        run: dotnet test tests/Atlas.ShoppingAssistant.Tests/Atlas.ShoppingAssistant.Tests.csproj --no-build --filter "RequiresOllama!=true"
+      - name: Test — unitárias (sem infra)
+        run: |
+          dotnet test tests/Atlas.Catalog.Domain.Tests/Atlas.Catalog.Domain.Tests.csproj --no-build
+          dotnet test tests/Atlas.Inventory.Domain.Tests/Atlas.Inventory.Domain.Tests.csproj --no-build
+          dotnet test tests/Atlas.Offers.Domain.Tests/Atlas.Offers.Domain.Tests.csproj --no-build
+          dotnet test tests/Atlas.Orders.Domain.Tests/Atlas.Orders.Domain.Tests.csproj --no-build
+          dotnet test tests/Atlas.Payments.Domain.Tests/Atlas.Payments.Domain.Tests.csproj --no-build
+          dotnet test tests/Atlas.Checkout.Domain.Tests/Atlas.Checkout.Domain.Tests.csproj --no-build
+          dotnet test tests/Atlas.Checkout.Application.Tests/Atlas.Checkout.Application.Tests.csproj --no-build
+          dotnet test tests/Atlas.ShoppingAssistant.Tests/Atlas.ShoppingAssistant.Tests.csproj --no-build --filter "RequiresOllama!=true"
+          dotnet test tests/SimulatedPsp.Tests/SimulatedPsp.Tests.csproj --no-build
 
-  contracts:
+  contracts-unit:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,8 +38,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '10.0.x' }
       - name: Build
+        run: dotnet build src/Atlas.Contracts.Grpc/Atlas.Contracts.Grpc.csproj
+      - name: Test — Events
         run: |
-          dotnet build src/Atlas.Contracts.Grpc/Atlas.Contracts.Grpc.csproj
-      - name: Test
-        run: |
-          dotnet test tests/Atlas.Contracts.Events.Tests/Atlas.Contracts.Events.Tests.csproj --no-build || dotnet test tests/Atlas.Contracts.Events.Tests/Atlas.Contracts.Events.Tests.csproj
+          dotnet test tests/Atlas.Contracts.Events.Tests/Atlas.Contracts.Events.Tests.csproj --no-build || \
+          dotnet test tests/Atlas.Contracts.Events.Tests/Atlas.Contracts.Events.Tests.csproj
