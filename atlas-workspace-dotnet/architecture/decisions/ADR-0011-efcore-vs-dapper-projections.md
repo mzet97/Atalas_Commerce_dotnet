@@ -1,6 +1,8 @@
 # ADR-0011 — EF Core 10 vs Dapper/Npgsql nas projeções PostgreSQL
 
-**Status:** PROPOSED · **Data:** 2026-10-27
+**Status:** ACCEPTED (2026-11-03 — fechada com L1 real: EVD-009-002) · **Decisão:** Dapper NÃO
+adotado. Npgsql/EF direto nas views bateu p95 4,76ms SEM cache e 0,61ms com cache-aside Redis —
+muito abaixo do gate 1500ms. Dapper só entraria por rota medida como gargalo (nenhuma até M9 L1).
 
 ## Contexto
 Projection workers (.NET `BackgroundService`) gravam read models no PostgreSQL na mesma transação do `processed_events`; APIs de consulta leem essas projeções. A escolha de ORM afeta migrations, perf e manutenção.
