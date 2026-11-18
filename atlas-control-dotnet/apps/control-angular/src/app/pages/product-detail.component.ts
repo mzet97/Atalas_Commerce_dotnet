@@ -24,6 +24,25 @@ import { KeycloakService } from '../auth/keycloak.service';
       }
       <dt>SKUs</dt><dd class="mono">{{ skuCodes(p) }}</dd>
     </dl>
+    <div class="card">
+      <h2>Imagens (capa = primeira)</h2>
+      @if (images(p).length === 0) { <p class="muted">Sem imagens — anexe abaixo.</p> }
+      <div class="gallery">
+        @for (img of images(p); track img.key; let first = $first) {
+        <figure>
+          <img [src]="imgUrl(img.key)" [alt]="img.key" loading="lazy">
+          @if (first) { <figcaption><span class="pill ok">capa</span></figcaption> }
+          <figcaption><button class="link danger-text" (click)="removeImage(img.key)" [disabled]="busy()">remover</button></figcaption>
+        </figure>
+        }
+      </div>
+      <div class="row">
+        <label>Enviar imagem (jpeg/png/webp, até 5 MiB)
+          <input type="file" accept="image/jpeg,image/png,image/webp" (change)="upload($event)" [disabled]="busy()">
+        </label>
+        @if (uploading()) { <span class="muted">enviando…</span> }
+      </div>
+    </div>
     @if (editable()) {
     <div class="card">
       <h2>Editar rascunho (CAS v{{ p['version'] }})</h2>
@@ -77,6 +96,8 @@ export class ProductDetailComponent implements OnInit {
   unpublishQueue = signal<OperationApproval[]>([]);
   form = { ptBR: '', enUS: '', esES: '' };
   unpublishReason = '';
+  mediaBase = signal('');
+  uploading = signal(false);
 
   async ngOnInit(): Promise<void> {
     this.id.set(this.route.snapshot.paramMap.get('id') ?? '');
@@ -95,11 +116,20 @@ export class ProductDetailComponent implements OnInit {
     return s === 'Draft' || s === 'Unpublished';
   }
 
+  images(p: Record<string, unknown>): { key: string; contentType: string; sizeBytes: number }[] {
+    return (p['images'] as { key: string; contentType: string; sizeBytes: number }[] | undefined) ?? [];
+  }
+  imgUrl(key: string): string {
+    const base = this.mediaBase();
+    return base ? `${base}/${key}` : key;
+  }
+
   async reload(): Promise<void> {
     this.error.set('');
     try {
-      const p = await this.api.getProduct(this.id());
+      const [p, media] = await Promise.all([this.api.getProduct(this.id()), this.api.mediaBase().catch(() => ({ publicBaseUrl: '' }))]);
       this.item.set(p);
+      this.mediaBase.set(media.publicBaseUrl);
       for (const t of this.titles(p)) {
         if (t.locale === 'pt-BR') this.form.ptBR = t.title;
         if (t.locale === 'en-US') this.form.enUS = t.title;
@@ -161,6 +191,41 @@ export class ProductDetailComponent implements OnInit {
     try {
       await this.api.deleteProduct(this.id());
       await this.router.navigate(['/products']);
+    } catch (e) { this.error.set((e as Error).message); }
+    finally { this.busy.set(false); }
+  }
+
+  async upload(ev: Event): Promise<void> {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const p = this.item();
+    if (!p) return;
+    this.uploading.set(true);
+    this.error.set('');
+    this.ok.set('');
+    try {
+      const { uploadUrl, objectKey } = await this.api.requestImageUpload(this.id(), file.type, file.size);
+      const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      if (!put.ok) throw new Error(`MinIO recusou o envio (HTTP ${put.status})`);
+      await this.api.attachImage(this.id(), Number(p['version']), objectKey);
+      this.ok.set('Imagem anexada.');
+      await this.reload();
+    } catch (e) { this.error.set((e as Error).message); }
+    finally { this.uploading.set(false); }
+  }
+
+  async removeImage(key: string): Promise<void> {
+    if (!confirm('Remover esta imagem do produto?')) return;
+    const p = this.item();
+    if (!p) return;
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      await this.api.detachImage(this.id(), Number(p['version']), key);
+      this.ok.set('Imagem removida.');
+      await this.reload();
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }

@@ -12,13 +12,18 @@ public sealed record CatalogTitleDto(string Locale, string Title);
 /// <summary>Linha de produtos (grade do Control): rascunho vindo do owner.</summary>
 public sealed record CatalogProductRow(
     string ProductId, string Status, long Version, string MarketId,
-    IReadOnlyList<CatalogTitleDto> Titles, int SkuCount, string CreatedBy);
+    IReadOnlyList<CatalogTitleDto> Titles, int SkuCount, string CreatedBy,
+    IReadOnlyList<CatalogImageDto>? Images = null);
 
 public sealed record CatalogSkuDto(string SkuId, string Code);
 
+/// <summary>Imagem anexada (record serializável — nunca tupla; capa = [0]).</summary>
+public sealed record CatalogImageDto(string Key, string ContentType, long SizeBytes);
+
 public sealed record CatalogProductDetail(
     string ProductId, string Status, long Version,
-    IReadOnlyList<CatalogTitleDto> Titles, IReadOnlyList<CatalogSkuDto> Skus);
+    IReadOnlyList<CatalogTitleDto> Titles, IReadOnlyList<CatalogSkuDto> Skus,
+    IReadOnlyList<CatalogImageDto>? Images = null);
 
 /// <summary>Port do Control para o Catalog owner (CRUD + unpublish; DIP: adapter no Host).</summary>
 public interface ICatalogOwnerCatalog
@@ -39,6 +44,12 @@ public interface ICatalogOwnerCatalog
         string requestId, string actorSub, string productId, long expectedVersion,
         string approvalToken, string reason, CancellationToken ct);
     Task<(bool Found, long Version)> GetHeadVersionAsync(string productId, CancellationToken ct);
+    Task<(bool Accepted, string? UploadUrl, string? ObjectKey, string? ExpiresAtUtc, string? Reason)> RequestImageUploadAsync(
+        string productId, string actorSub, string contentType, long contentLength, CancellationToken ct);
+    Task<(bool Accepted, long Version, string? Reason)> AttachImageAsync(
+        string productId, long expectedVersion, string actorSub, string objectKey, CancellationToken ct);
+    Task<(bool Accepted, long Version, string? Reason)> DetachImageAsync(
+        string productId, long expectedVersion, string actorSub, string objectKey, CancellationToken ct);
 }
 
 /// <summary>
@@ -68,6 +79,10 @@ public sealed class CatalogOperationsModule(
             var (ok, version) = await catalog.GetHeadVersionAsync("00000000-0000-0000-0000-000000000000", ct);
             return Results.Ok(new { module = Name, fourEyes = true, abac = "grants", ownerReachable = ok, _ = version });
         });
+
+        // Base pública das imagens (a UI compõe key → URL; host conhece o Media:PublicBaseUrl).
+        endpoints.MapGet("/modules/catalog/media-base", () =>
+            Results.Ok(new { publicBaseUrl = (config["Media:PublicBaseUrl"] ?? "").TrimEnd('/') }));
 
         // ---- grade de produtos (leitura operacional) ----
         endpoints.MapGet("/modules/catalog/products", async (
@@ -144,6 +159,52 @@ public sealed class CatalogOperationsModule(
                 return Results.Json(new { error = reason, audited = true }, statusCode: 409);
             }
             await audit.AppendAsync(actor, "catalog.draft.submit", "SUBMITTED", $"product={id} v={version}", Corr(), ct);
+            return Results.Ok(new { productId = id, version });
+        });
+
+        // ---- imagens: upload direto ao MinIO via presigned PUT + attach auditado ----
+        endpoints.MapPost("/modules/catalog/products/{id}/image-uploads", "role:catalog_editor",
+            async (HttpContext http, string id, ImageUploadRequest req, CancellationToken ct) =>
+        {
+            var actor = Sub(http);
+            var (accepted, url, key, expires, reason) = await catalog.RequestImageUploadAsync(
+                id, actor, req.ContentType, req.ContentLength, ct);
+            if (!accepted)
+            {
+                await audit.AppendAsync(actor, "catalog.image.upload", "DENIED", $"product={id} motivo={reason}", Corr(), ct);
+                return Results.Json(new { error = reason, audited = true }, statusCode: 400);
+            }
+            return Results.Ok(new { uploadUrl = url, objectKey = key, expiresAtUtc = expires });
+        });
+
+        endpoints.MapPost("/modules/catalog/products/{id}/images", "role:catalog_editor",
+            async (HttpContext http, string id, ImageAttachRequest req, CancellationToken ct) =>
+        {
+            var actor = Sub(http);
+            var (accepted, version, reason) = await catalog.AttachImageAsync(id, req.ExpectedVersion, actor, req.ObjectKey, ct);
+            if (!accepted)
+            {
+                await audit.AppendAsync(actor, "catalog.image.attach", "DENIED", $"product={id} motivo={reason}", Corr(), ct);
+                var notFound = reason == "produto inexistente";
+                return Results.Json(new { error = reason, audited = true }, statusCode: notFound ? 404 : 409);
+            }
+            await audit.AppendAsync(actor, "catalog.image.attach", "ATTACHED", $"product={id} key={req.ObjectKey} v={version}", Corr(), ct);
+            return Results.Ok(new { productId = id, version });
+        });
+
+        endpoints.MapDelete("/modules/catalog/products/{id}/images/{*key}", "role:catalog_editor",
+            async (HttpContext http, string id, string key, long expectedVersion, CancellationToken ct) =>
+        {
+            var actor = Sub(http);
+            var objectKey = Uri.UnescapeDataString(key);
+            var (accepted, version, reason) = await catalog.DetachImageAsync(id, expectedVersion, actor, objectKey, ct);
+            if (!accepted)
+            {
+                await audit.AppendAsync(actor, "catalog.image.detach", "DENIED", $"product={id} motivo={reason}", Corr(), ct);
+                var notFound = reason == "produto inexistente";
+                return Results.Json(new { error = reason, audited = true }, statusCode: notFound ? 404 : 409);
+            }
+            await audit.AppendAsync(actor, "catalog.image.detach", "DETACHED", $"product={id} key={objectKey} v={version}", Corr(), ct);
             return Results.Ok(new { productId = id, version });
         });
 
@@ -272,6 +333,8 @@ public sealed class CatalogOperationsModule(
     public sealed record CatalogProductRequest(string? MarketId, List<CatalogTitle> Titles, List<string>? SkuCodes);
     public sealed record CatalogProductUpdate(long ExpectedVersion, List<CatalogTitle> Titles, Dictionary<string, string>? Attributes);
     public sealed record SubmitDraftRequest(long ExpectedVersion);
+    public sealed record ImageUploadRequest(string ContentType, long ContentLength);
+    public sealed record ImageAttachRequest(long ExpectedVersion, string ObjectKey);
     public sealed record UnpublishRequest(string ProductId, string Reason);
     public sealed record DecideRequest(string Decision, string? Reason);
 }

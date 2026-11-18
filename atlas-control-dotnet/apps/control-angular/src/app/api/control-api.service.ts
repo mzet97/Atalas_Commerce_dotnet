@@ -127,6 +127,18 @@ export class ControlApiService {
   requestUnpublish(productId: string, reason: string): Promise<{ approvalId: string }> {
     return this.call('/modules/catalog/unpublish/requests', { method: 'POST', body: JSON.stringify({ productId, reason }) });
   }
+  mediaBase(): Promise<{ publicBaseUrl: string }> {
+    return this.call('/modules/catalog/media-base');
+  }
+  requestImageUpload(id: string, contentType: string, contentLength: number): Promise<{ uploadUrl: string; objectKey: string; expiresAtUtc: string }> {
+    return this.call(`/modules/catalog/products/${id}/image-uploads`, { method: 'POST', body: JSON.stringify({ contentType, contentLength }) });
+  }
+  attachImage(id: string, expectedVersion: number, objectKey: string): Promise<{ productId: string; version: number }> {
+    return this.call(`/modules/catalog/products/${id}/images`, { method: 'POST', body: JSON.stringify({ expectedVersion, objectKey }) });
+  }
+  detachImage(id: string, expectedVersion: number, objectKey: string): Promise<{ productId: string; version: number }> {
+    return this.call(`/modules/catalog/products/${id}/images/${encodeURIComponent(objectKey)}?expectedVersion=${expectedVersion}`, { method: 'DELETE' });
+  }
   listCatalogApprovals(state?: string, subject?: string): Promise<Page<OperationApproval>> {
     const q = new URLSearchParams({ page: '1', pageSize: '50' });
     if (state) q.set('state', state);

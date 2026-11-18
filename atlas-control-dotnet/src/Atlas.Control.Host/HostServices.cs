@@ -107,7 +107,8 @@ public sealed class GrpcCatalogOwnerCatalog(string ownerUrl) : CatalogOps.ICatal
             }, cancellationToken: ct);
             return ([.. res.Items.Select(i => new CatalogOps.CatalogProductRow(
                 i.ProductId, i.Status, i.AggregateVersion, i.MarketId,
-                [.. i.Titles.Select(t => new CatalogOps.CatalogTitleDto(t.Locale, t.Text))], i.SkuCount, i.CreatedBy))], res.Total);
+                [.. i.Titles.Select(t => new CatalogOps.CatalogTitleDto(t.Locale, t.Text))], i.SkuCount, i.CreatedBy,
+                [.. i.Images.Select(m => new CatalogOps.CatalogImageDto(m.Key, m.ContentType, m.SizeBytes))]))], res.Total);
         }
         catch (global::Grpc.Core.RpcException ex)
         {
@@ -124,7 +125,8 @@ public sealed class GrpcCatalogOwnerCatalog(string ownerUrl) : CatalogOps.ICatal
                 new Atlas.Contracts.Catalog.V1.GetProductRequest { ProductId = productId }, cancellationToken: ct);
             return new CatalogOps.CatalogProductDetail(res.ProductId, res.Status, res.AggregateVersion,
                 [.. res.Titles.Select(t => new CatalogOps.CatalogTitleDto(t.Locale, t.Text))],
-                [.. res.Skus.Select(s => new CatalogOps.CatalogSkuDto(s.SkuId, s.SkuCode))]);
+                [.. res.Skus.Select(s => new CatalogOps.CatalogSkuDto(s.SkuId, s.SkuCode))],
+                [.. res.Images.Select(m => new CatalogOps.CatalogImageDto(m.Key, m.ContentType, m.SizeBytes))]);
         }
         catch (global::Grpc.Core.RpcException ex) when (ex.StatusCode == global::Grpc.Core.StatusCode.NotFound)
         {
@@ -232,6 +234,67 @@ public sealed class GrpcCatalogOwnerCatalog(string ownerUrl) : CatalogOps.ICatal
     {
         var detail = await GetAsync(productId, ct);
         return detail is null ? (false, 0) : (true, detail.Version);
+    }
+
+    public async Task<(bool Accepted, string? UploadUrl, string? ObjectKey, string? ExpiresAtUtc, string? Reason)> RequestImageUploadAsync(
+        string productId, string actorSub, string contentType, long contentLength, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().RequestImageUploadAsync(
+                new Atlas.Contracts.Catalog.V1.RequestImageUploadRequest
+                {
+                    RequestId = $"img-{Guid.NewGuid():N}", ActorSub = actorSub, ProductId = productId,
+                    ContentType = contentType, ContentLength = contentLength,
+                }, cancellationToken: ct);
+            return (res.Accepted,
+                res.UploadUrl is "" ? null : res.UploadUrl,
+                res.ObjectKey is "" ? null : res.ObjectKey,
+                res.ExpiresAtUtc is "" ? null : res.ExpiresAtUtc,
+                res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, null, null, null, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason)> AttachImageAsync(
+        string productId, long expectedVersion, string actorSub, string objectKey, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().AttachImageAsync(
+                new Atlas.Contracts.Catalog.V1.AttachImageRequest
+                {
+                    RequestId = $"img-{Guid.NewGuid():N}", ActorSub = actorSub, ProductId = productId,
+                    ExpectedVersion = expectedVersion, ObjectKey = objectKey,
+                }, cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason)> DetachImageAsync(
+        string productId, long expectedVersion, string actorSub, string objectKey, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().DetachImageAsync(
+                new Atlas.Contracts.Catalog.V1.DetachImageRequest
+                {
+                    RequestId = $"img-{Guid.NewGuid():N}", ActorSub = actorSub, ProductId = productId,
+                    ExpectedVersion = expectedVersion, ObjectKey = objectKey,
+                }, cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail);
+        }
     }
 }
 
