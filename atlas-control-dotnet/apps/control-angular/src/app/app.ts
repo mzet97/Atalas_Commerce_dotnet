@@ -1,30 +1,45 @@
 import { Component, inject } from '@angular/core';
-import { RouterLink, RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { KeycloakService } from './auth/keycloak.service';
 
 @Component({
-  imports: [RouterOutlet, RouterLink],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   selector: 'app-root',
   template: `
-  <header class="topbar">
-    <span class="brand">Atlas Control</span>
-    @if (kc.authenticated()) {
-    <nav>
-      <a routerLink="/products">Produtos</a>
-      <a routerLink="/approvals">Aprovações</a>
-      <a routerLink="/approvals-new">Solicitar ajuste</a>
-      <a routerLink="/publications">Publicações</a>
-      <a routerLink="/audit">Auditoria</a>
-      @if (kc.hasRole('iam_admin')) { <a routerLink="/grants">Grants</a> }
-      @if (kc.hasRole('approver')) { <a routerLink="/refunds">Reembolsos</a> }
-      <a routerLink="/ops">Operação</a>
-    </nav>
-    <span class="user">{{ kc.username() }} <button class="link" (click)="kc.logout()">sair</button></span>
-    } @else if (kc.ready()) {
-    <nav><a routerLink="/login">entrar</a></nav>
-    }
-  </header>
-  <main><router-outlet /></main>`,
+  <div class="shell">
+    <aside class="side">
+      <div class="side-brand"><strong>Atlas Control</strong><small>console operacional</small></div>
+      @if (kc.authenticated()) {
+      <nav>
+        <div class="side-sec"><span>VISÃO GERAL</span>
+          <a routerLink="/dashboard" routerLinkActive="active">Painel</a>
+        </div>
+        <div class="side-sec"><span>CATÁLOGO</span>
+          <a routerLink="/products" routerLinkActive="active">Produtos</a>
+          <a routerLink="/products-new" routerLinkActive="active">Novo produto</a>
+          <a routerLink="/publications" routerLinkActive="active">Publicações</a>
+          <a routerLink="/publications-new" routerLinkActive="active">Solicitar publicação</a>
+        </div>
+        <div class="side-sec"><span>APROVAÇÕES</span>
+          <a routerLink="/approvals" routerLinkActive="active">Ajustes de estoque</a>
+          <a routerLink="/approvals-new" routerLinkActive="active">Solicitar ajuste</a>
+          @if (kc.hasRole('approver')) { <a routerLink="/refunds" routerLinkActive="active">Reembolsos</a> }
+        </div>
+        <div class="side-sec"><span>SISTEMA</span>
+          <a routerLink="/audit" routerLinkActive="active">Auditoria</a>
+          @if (kc.hasRole('iam_admin')) { <a routerLink="/grants" routerLinkActive="active">Grants</a> }
+          <a routerLink="/ops" routerLinkActive="active">Operação</a>
+        </div>
+      </nav>
+      <div class="side-user">{{ kc.username() }} <button class="link" (click)="kc.logout()">sair</button></div>
+      } @else if (kc.ready()) {
+      <nav><div class="side-sec"><a routerLink="/login" routerLinkActive="active">entrar</a></div></nav>
+      }
+    </aside>
+    <div class="content">
+      <main><router-outlet /></main>
+    </div>
+  </div>`,
 })
 export class App {
   kc = inject(KeycloakService);

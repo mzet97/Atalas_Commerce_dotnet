@@ -5,11 +5,22 @@ import { KeycloakService } from '../auth/keycloak.service';
 @Component({
   standalone: true,
   template: `
-  <section class="page narrow center">
-    <h1>Atlas Control</h1>
-    <p class="muted">Console administrativo — entrada com identidade do realm <span class="mono">atlas</span> (MFA para administradores).</p>
-    <button (click)="manual()">Entrar com Atlas ID</button>
-  </section>`,
+  <div class="login-split">
+    <div class="login-brand">
+      <strong>Atlas Control</strong>
+      <p>Console operacional do e-commerce — master data e aprovações four-eyes.</p>
+      <ul>
+        <li>Produtos, publicações e despublicações</li>
+        <li>Ajustes de estoque com aprovação dupla</li>
+        <li>Trilha de auditoria encadeada</li>
+      </ul>
+    </div>
+    <div class="login-box">
+      <h1>Entrar</h1>
+      <p class="muted">Identidade do realm <span class="mono">atlas</span> (MFA para administradores).</p>
+      <button (click)="manual()">Entrar com Atlas ID</button>
+    </div>
+  </div>`,
 })
 export class LoginComponent implements OnInit {
   kc = inject(KeycloakService);
