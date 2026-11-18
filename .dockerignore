@@ -1,0 +1,18 @@
+# F3: contexto de build = RAIZ do monorepo (para resolver refs cross-repo
+# atlas-storefront-dotnet -> atlas-platform-contracts-dotnet).
+.git/
+**/bin/
+**/obj/
+**/node_modules/
+**/.next/
+**/dist/
+**/TestResults/
+**/test-results/
+**/.angular/
+results/
+.omx/
+*.md
+atlas-workspace-dotnet/
+ATLAS_COMMERCE_DOTNET10_MAF_SDD_AGENT_HANDOFF/
+.zcode/
+.github/

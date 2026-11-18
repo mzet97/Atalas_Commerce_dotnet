@@ -1,0 +1,32 @@
+# F3: imagem parametrizada dos serviços/APIs/workers .NET 10 (storefront + control).
+# Contexto: RAIZ do monorepo. Exemplo (Gateway):
+#   docker build -f atlas-storefront-dotnet/deploy/docker/Dockerfile.service \
+#     --build-arg REPO=atlas-storefront-dotnet \
+#     --build-arg CSPROJ=src/Gateway/Atlas.Gateway/Atlas.Gateway.csproj \
+#     --build-arg ASSEMBLY=Atlas.Gateway \
+#     -t atlas/gateway:TAG .
+# Convenções: imagens atlas/<svc> (charts), porta 8080, warnings-as-errors do repo valem aqui.
+ARG REPO=atlas-storefront-dotnet
+ARG CSPROJ=src/Gateway/Atlas.Gateway/Atlas.Gateway.csproj
+ARG ASSEMBLY=Atlas.Gateway
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG REPO
+ARG CSPROJ
+WORKDIR /repo
+COPY ${REPO}/global.json ${REPO}/*.slnx ${REPO}/Directory.Packages.props ${REPO}/Directory.Build.props ./
+COPY ${REPO}/src/ src/
+COPY atlas-platform-contracts-dotnet/src/ /atlas-platform-contracts-dotnet/src/
+COPY atlas-platform-contracts-dotnet/contracts/ /atlas-platform-contracts-dotnet/contracts/
+COPY atlas-platform-contracts-dotnet/Directory.Packages.props atlas-platform-contracts-dotnet/Directory.Build.props /atlas-platform-contracts-dotnet/
+RUN dotnet publish "${CSPROJ}" -c Release -o /app --nologo
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ARG ASSEMBLY
+WORKDIR /app
+COPY --from=build /app .
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    ASSEMBLY_NAME=${ASSEMBLY}
+EXPOSE 8080
+ENTRYPOINT ["sh", "-c", "exec dotnet /app/${ASSEMBLY_NAME}.dll"]

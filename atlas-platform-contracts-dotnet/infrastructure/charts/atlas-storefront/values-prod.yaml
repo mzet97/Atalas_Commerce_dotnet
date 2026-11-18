@@ -1,0 +1,399 @@
+# F4 deploy no k8s .51 (ns dotnet-atlas): imagens locais importadas + segredos do cluster.
+# Imagens: atlas/*:local-f3 (IfNotPresent; já no containerd do nó).
+# Kestrel: endpoints via config (Kestrel__Endpoints__) somam ao ListenLocalhost de dev;
+# em cluster o tráfego chega pelo pod-IP nas portas abaixo (localhost continua só local).
+atlasService:
+  gateway:
+    enabled: true
+    image:
+      repository: atlas/gateway
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Catalog__Url
+        value: http://atlas-catalog-api
+      - name: Inventory__Url
+        value: http://atlas-inventory-api
+      - name: Checkout__Url
+        value: http://atlas-checkout-api
+      - name: Auth__Mode
+        value: Keycloak
+      - name: Auth__Authority
+        value: http://keycloak.keycloak.svc:8080/realms/atlas
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+    secrets:
+      - envName: Pg__ConnectionString
+        name: atlas-data
+        key: pg-connstr
+      - envName: Redis__ConnectionString
+        name: atlas-data
+        key: redis-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: ["kube-system"]
+  catalog-api:
+    enabled: true
+    image:
+      repository: atlas/catalog-api
+      tag: "local-f3"
+    containerPort: 8080
+    extraPorts:
+      - name: grpc
+        port: 81
+        targetPort: 5295
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Mongo__Database
+        value: atlas_catalog
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+      - name: Kestrel__Endpoints__Grpc__Url
+        value: http://+:5295
+      - name: Kestrel__Endpoints__Grpc__Protocols
+        value: Http2
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  offers-api:
+    enabled: true
+    image:
+      repository: atlas/offers-api
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Mongo__OffersDatabase
+        value: atlas_offers
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  inventory-api:
+    enabled: true
+    image:
+      repository: atlas/inventory-api
+      tag: "local-f3"
+    containerPort: 8080
+    extraPorts:
+      - name: grpc
+        port: 81
+        targetPort: 5296
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Mongo__Database
+        value: atlas_inventory
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+      - name: Kestrel__Endpoints__Grpc__Url
+        value: http://+:5296
+      - name: Kestrel__Endpoints__Grpc__Protocols
+        value: Http2
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  checkout-api:
+    enabled: true
+    image:
+      repository: atlas/checkout-api
+      # tag única por build (IfNotPresent + reuso de tag travava em imagem velha no CRI)
+      tag: "local-f3-takeover1"
+    containerPort: 8080
+    replicaCount: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Mongo__CheckoutDatabase
+        value: atlas_checkout
+      - name: Mongo__OrdersDatabase
+        value: atlas_orders
+      - name: Mongo__PaymentsDatabase
+        value: atlas_payments
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+      - name: InventoryOwner__Url
+        value: http://atlas-inventory-api.dotnet-atlas.svc:81
+      - name: Psp__Url
+        value: http://atlas-psp-fake
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  payments-api:
+    enabled: true
+    image:
+      repository: atlas/payments-api
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Mongo__PaymentsDatabase
+        value: atlas_payments
+      - name: Psp__Url
+        value: http://atlas-psp-fake
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+      - envName: Approval__TokenSecret
+        name: atlas-hmac
+        key: approval-token-secret
+      - envName: Psp__WebhookSecret
+        name: atlas-hmac
+        key: psp-webhook-secret
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  fulfillment:
+    enabled: true
+    image:
+      repository: atlas/fulfillment-api
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Inventory__Url
+        value: http://atlas-inventory-api
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  assistant:
+    enabled: true
+    image:
+      repository: atlas/assistant
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Marketplace__Url
+        value: http://atlas-gateway
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+    secrets:
+      - envName: Consent__Secret
+        name: atlas-hmac
+        key: consent-secret
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  psp-fake:
+    enabled: true
+    image:
+      repository: atlas/psp-fake
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /health
+    env:
+      - name: Kestrel__Endpoints__Http__Url
+        value: http://+:8080
+    secrets:
+      - envName: Psp__WebhookSecret
+        name: atlas-hmac
+        key: psp-webhook-secret
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: []
+  notifications-worker:
+    enabled: true
+    image:
+      repository: atlas/notifications
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: false
+      path: /health
+    env:
+      - name: Kafka__BootstrapServers
+        value: kafka.kafka.svc:9092
+      - name: Mongo__NotificationsDatabase
+        value: atlas_notifications
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+      - envName: Rabbit__Url
+        name: atlas-data
+        key: rabbit-url
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: false
+      allowFromNamespaces: []
+  projections-worker:
+    enabled: true
+    image:
+      repository: atlas/projections
+      tag: "local-f3"
+    containerPort: 8080
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: false
+      path: /health
+    env:
+      - name: Kafka__BootstrapServers
+        value: kafka.kafka.svc:9092
+    secrets:
+      - envName: Mongo__ConnectionString
+        name: atlas-data
+        key: mongo-connstr
+      - envName: Pg__ConnectionString
+        name: atlas-data
+        key: pg-connstr
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: false
+      allowFromNamespaces: []
+  vitrine:
+    enabled: true
+    image:
+      repository: atlas/storefront-web
+      tag: "local-f3"
+    containerPort: 3000
+    replicaCount: 1
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTargetPercent: 70
+    probes:
+      enabled: true
+      path: /api/health
+    env:
+      - name: BFF_URL
+        value: http://atlas-gateway
+      - name: NEXT_PUBLIC_KEYCLOAK_URL
+        value: http://keycloak.home.arpa
+      - name: NEXT_PUBLIC_KEYCLOAK_REALM
+        value: atlas
+      - name: NEXT_PUBLIC_KEYCLOAK_CLIENT_ID
+        value: storefront-next
+    networkPolicy:
+      enabled: true
+      allowFromApp: ""
+      allowSameNamespace: true
+      allowFromNamespaces: ["kube-system"]

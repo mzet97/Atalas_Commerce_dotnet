@@ -1,0 +1,31 @@
+# F3: host do Control (monólito modular). Mesmo template dos serviços storefront.
+# Contexto: RAIZ do monorepo.
+#   docker build -f atlas-control-dotnet/deploy/docker/Dockerfile.service \
+#     --build-arg REPO=atlas-control-dotnet \
+#     --build-arg CSPROJ=src/Atlas.Control.Host/Atlas.Control.Host.csproj \
+#     --build-arg ASSEMBLY=Atlas.Control.Host \
+#     -t atlas/control-host:TAG .
+ARG REPO=atlas-control-dotnet
+ARG CSPROJ=src/Atlas.Control.Host/Atlas.Control.Host.csproj
+ARG ASSEMBLY=Atlas.Control.Host
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG REPO
+ARG CSPROJ
+WORKDIR /repo
+COPY ${REPO}/global.json ${REPO}/*.slnx ${REPO}/Directory.Packages.props ${REPO}/Directory.Build.props ./
+COPY ${REPO}/src/ src/
+COPY atlas-platform-contracts-dotnet/src/ /atlas-platform-contracts-dotnet/src/
+COPY atlas-platform-contracts-dotnet/contracts/ /atlas-platform-contracts-dotnet/contracts/
+COPY atlas-platform-contracts-dotnet/Directory.Packages.props atlas-platform-contracts-dotnet/Directory.Build.props /atlas-platform-contracts-dotnet/
+RUN dotnet publish "${CSPROJ}" -c Release -o /app --nologo
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ARG ASSEMBLY
+WORKDIR /app
+COPY --from=build /app .
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    ASSEMBLY_NAME=${ASSEMBLY}
+EXPOSE 8080
+ENTRYPOINT ["sh", "-c", "exec dotnet /app/${ASSEMBLY_NAME}.dll"]
