@@ -67,6 +67,19 @@ public sealed class CatalogProjector(
                 await upsert.ExecuteNonQueryAsync(ct);
                 applied++;
             }
+
+            if (evt.EventType == "Product.UnpublishedV1")
+            {
+                // Despublicação: remove da busca (stale guard — evento antigo não remove projeção nova).
+                var unpubId = evt.Payload.GetProperty("product_id").GetString();
+                await using var del = new NpgsqlCommand($"""
+                    DELETE FROM {productsTable} WHERE product_id = @id AND source_version <= @ver
+                    """, conn, tx);
+                del.Parameters.AddWithValue("id", Guid.Parse(unpubId!));
+                del.Parameters.AddWithValue("ver", evt.AggregateVersion);
+                await del.ExecuteNonQueryAsync(ct);
+                applied++;
+            }
             await tx.CommitAsync(ct);
         }
         return applied;

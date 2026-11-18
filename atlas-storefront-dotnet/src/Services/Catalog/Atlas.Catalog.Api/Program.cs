@@ -22,6 +22,7 @@ builder.Services.AddSingleton<Atlas.Catalog.Infrastructure.MongoCatalogStore>(_ 
     Atlas.Catalog.Infrastructure.MongoCatalogStore.Create(mongoConn, mongoDbName));
 builder.Services.AddSingleton<Atlas.Catalog.Application.ICatalogStore>(sp => sp.GetRequiredService<Atlas.Catalog.Infrastructure.MongoCatalogStore>());
 builder.Services.AddSingleton<UpsertDraftHandler>();
+builder.Services.AddSingleton<UpdateDraftHandler>();
 builder.Services.AddSingleton<PublishProductHandler>();
 builder.Services.AddGrpc();
 

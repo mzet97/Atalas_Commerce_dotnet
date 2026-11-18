@@ -7,6 +7,15 @@ using ProtoLocalizedText = Atlas.Contracts.Catalog.V1.LocalizedText;
 using Grpc.Core;
 using UpsertDraftRequest = Atlas.Contracts.Catalog.V1.UpsertDraftRequest;
 using UpsertDraftResponse = Atlas.Contracts.Catalog.V1.UpsertDraftResponse;
+using ListDraftsRequest = Atlas.Contracts.Catalog.V1.ListDraftsRequest;
+using ListDraftsResponse = Atlas.Contracts.Catalog.V1.ListDraftsResponse;
+using DraftView = Atlas.Contracts.Catalog.V1.DraftView;
+using UpdateDraftRequest = Atlas.Contracts.Catalog.V1.UpdateDraftRequest;
+using UpdateDraftResponse = Atlas.Contracts.Catalog.V1.UpdateDraftResponse;
+using DeleteDraftRequest = Atlas.Contracts.Catalog.V1.DeleteDraftRequest;
+using DeleteDraftResponse = Atlas.Contracts.Catalog.V1.DeleteDraftResponse;
+using UnpublishProductRequest = Atlas.Contracts.Catalog.V1.UnpublishProductRequest;
+using UnpublishProductResponse = Atlas.Contracts.Catalog.V1.UnpublishProductResponse;
 using PublishProductRequest = Atlas.Contracts.Catalog.V1.PublishProductRequest;
 using PublishProductResponse = Atlas.Contracts.Catalog.V1.PublishProductResponse;
 using GetProductRequest = Atlas.Contracts.Catalog.V1.GetProductRequest;
@@ -25,6 +34,7 @@ namespace Atlas.Catalog.Api.Grpc;
 /// </summary>
 public sealed class CatalogOwnerGrpcService(
     UpsertDraftHandler upsertHandler,
+    UpdateDraftHandler updateHandler,
     PublishProductHandler publishHandler,
     ICatalogStore store) : CatalogOwnerService.CatalogOwnerServiceBase
 {
@@ -104,6 +114,83 @@ public sealed class CatalogOwnerGrpcService(
         response.Titles.AddRange(draft.Titles.Select(t => new ProtoLocalizedText { Locale = t.Locale.Value, Text = t.Text }));
         response.Skus.AddRange(draft.Skus.Select(s => new SkuView { SkuId = s.Id.Value.ToString(), SkuCode = s.Code }));
         return response;
+    }
+
+    public override async Task<ListDraftsResponse> ListDrafts(ListDraftsRequest request, ServerCallContext context)
+    {
+        var (items, total) = await store.ListDraftsAsync(
+            string.IsNullOrWhiteSpace(request.Status) ? null : request.Status,
+            string.IsNullOrWhiteSpace(request.MarketId) ? null : request.MarketId,
+            string.IsNullOrWhiteSpace(request.Search) ? null : request.Search,
+            request.Page <= 0 ? 1 : request.Page,
+            request.PageSize is <= 0 or > 200 ? 50 : request.PageSize,
+            context.CancellationToken);
+        var response = new ListDraftsResponse { Total = total };
+        response.Items.AddRange(items.Select(i =>
+        {
+            var view = new DraftView
+            {
+                ProductId = i.Id.ToString(),
+                Status = i.Status,
+                AggregateVersion = i.Version,
+                MarketId = i.MarketId,
+                SkuCount = i.SkuCount,
+                CreatedBy = i.CreatedBy,
+            };
+            view.Titles.AddRange(i.Titles.Select(t => new ProtoLocalizedText { Locale = t.Locale, Text = t.Title }));
+            return view;
+        }));
+        return response;
+    }
+
+    public override async Task<UpdateDraftResponse> UpdateDraft(UpdateDraftRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProductId) || string.IsNullOrWhiteSpace(request.ActorSub))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "product_id e actor_sub obrigatórios"));
+        if (request.Titles.Count == 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "ao menos um título é obrigatório"));
+        var outcome = await updateHandler.HandleAsync(new UpdateDraftCommand(
+            ParseId(request.ProductId),
+            request.ExpectedVersion,
+            request.ActorSub,
+            [.. request.Titles.Select(t => (t.Locale, t.Text))],
+            new Dictionary<string, string>(request.Attributes)), context.CancellationToken);
+        return outcome.Accepted
+            ? new UpdateDraftResponse { ProductId = request.ProductId, AggregateVersion = outcome.Version, Accepted = true }
+            : outcome.Reason == "produto inexistente"
+                ? throw new RpcException(new Status(StatusCode.NotFound, outcome.Reason))
+                : new UpdateDraftResponse { ProductId = request.ProductId, AggregateVersion = outcome.Version, Accepted = false, Reason = outcome.Reason ?? "" };
+    }
+
+    public override async Task<DeleteDraftResponse> DeleteDraft(DeleteDraftRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProductId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "product_id obrigatório"));
+        var (accepted, reason) = await store.DeleteDraftAsync(ParseId(request.ProductId), context.CancellationToken);
+        return accepted
+            ? new DeleteDraftResponse { Accepted = true }
+            : new DeleteDraftResponse { Accepted = false, Reason = reason ?? "" };
+    }
+
+    public override async Task<UnpublishProductResponse> UnpublishProduct(UnpublishProductRequest request, ServerCallContext context)
+    {
+        // Four-eyes igual ao PublishProduct: token HMAC do Control, revalidado no owner.
+        var secret = context.GetHttpContext().RequestServices
+            .GetRequiredService<IConfiguration>()["Approval:TokenSecret"] ?? "atlas-dev-approval-secret";
+        var approvedBy = ApprovalToken.TryValidate(
+            request.ApprovalToken, secret, request.ProductId, request.ExpectedVersion,
+            DateTimeOffset.UtcNow, out var tokenFailure);
+        if (approvedBy is null)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                $"approval_token rejeitado (four-eyes): {tokenFailure}"));
+
+        var id = ParseId(request.ProductId);
+        var outcome = await store.UnpublishInTransactionAsync(
+            id, request.ExpectedVersion, approvedBy.Sub, request.Reason,
+            request.RequestId, context.CancellationToken);
+        return outcome.Accepted
+            ? new UnpublishProductResponse { Accepted = true, AggregateVersion = outcome.Version, EventId = outcome.EventId ?? "" }
+            : new UnpublishProductResponse { Accepted = false, AggregateVersion = outcome.Version, Reason = outcome.Reason ?? "" };
     }
 
     private static ProductId ParseId(string raw)

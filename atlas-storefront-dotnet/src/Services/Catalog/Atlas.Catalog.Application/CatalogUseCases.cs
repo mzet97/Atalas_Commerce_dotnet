@@ -22,9 +22,35 @@ public interface ICatalogStore
     Task<PublishOutcome> PublishInTransactionAsync(
         ProductId productId, long expectedVersion, string approvedBy, string marketId, string correlationId, CancellationToken ct);
     Task<ProductDraft?> GetAsync(ProductId productId, CancellationToken ct);
+    Task<(IReadOnlyList<CatalogDraftSummary> Items, long Total)> ListDraftsAsync(
+        string? status, string? market, string? search, int page, int pageSize, CancellationToken ct);
+    Task<PublishOutcome> UpdateDraftAsync(
+        ProductId productId, long expectedVersion, IReadOnlyList<(string Locale, string Title)> titles,
+        IReadOnlyDictionary<string, string> attributes, CancellationToken ct);
+    Task<(bool Accepted, string? Reason)> DeleteDraftAsync(ProductId productId, CancellationToken ct);
+    Task<PublishOutcome> UnpublishInTransactionAsync(
+        ProductId productId, long expectedVersion, string actorSub, string reason, string correlationId, CancellationToken ct);
 }
 
+/// <summary>Linha da grade de produtos (operações do Control — ERP master data).</summary>
+public sealed record CatalogDraftSummary(
+    Guid Id, string Status, long Version, string MarketId,
+    IReadOnlyList<(string Locale, string Title)> Titles, int SkuCount, string CreatedBy);
+
 public sealed record PublishOutcome(bool Accepted, long Version, string? EventId, string? Reason);
+
+public sealed record UpdateDraftCommand(
+    ProductId ProductId,
+    long ExpectedVersion,
+    string ActorSub,
+    IReadOnlyList<(string Locale, string Title)> Titles,
+    IReadOnlyDictionary<string, string> Attributes);
+
+public sealed class UpdateDraftHandler(ICatalogStore store)
+{
+    public Task<PublishOutcome> HandleAsync(UpdateDraftCommand command, CancellationToken ct) =>
+        store.UpdateDraftAsync(command.ProductId, command.ExpectedVersion, command.Titles, command.Attributes, ct);
+}
 
 public sealed class UpsertDraftHandler(ICatalogStore store)
 {

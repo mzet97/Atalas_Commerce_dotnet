@@ -15,6 +15,14 @@ service CatalogOwnerService {
   // Publica produto previamente aprovado no Control (approval_token assinado).
   rpc PublishProduct(PublishProductRequest) returns (PublishProductResponse);
   rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+  // Grade do Control: lista paginada com filtros (leitura operacional, sem mutação).
+  rpc ListDrafts(ListDraftsRequest) returns (ListDraftsResponse);
+  // Atualiza rascunho (títulos/atributos; SKUs continuam append-only; CAS por versão).
+  rpc UpdateDraft(UpdateDraftRequest) returns (UpdateDraftResponse);
+  // Remove rascunho nunca publicado (Draft apenas; sem evento).
+  rpc DeleteDraft(DeleteDraftRequest) returns (DeleteDraftResponse);
+  // Tira produto da venda (Published -> Unpublished + Product.UnpublishedV1; four-eyes).
+  rpc UnpublishProduct(UnpublishProductRequest) returns (UnpublishProductResponse);
 }
 
 message UpsertDraftRequest {
@@ -70,6 +78,71 @@ message GetProductResponse {
   int64 aggregate_version = 3;
   repeated LocalizedText titles = 4;
   repeated SkuView skus = 5;
+}
+
+message ListDraftsRequest {
+  string status = 1;       // Draft|PendingApproval|Published|Unpublished (vazio = todos)
+  string market_id = 2;
+  string search = 3;        // título ou sku_code (case-insensitive)
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message ListDraftsResponse {
+  repeated DraftView items = 1;
+  int64 total = 2;
+}
+
+message DraftView {
+  string product_id = 1;
+  string status = 2;
+  int64 aggregate_version = 3;
+  string market_id = 4;
+  repeated LocalizedText titles = 5;
+  int32 sku_count = 6;
+  string created_by = 7;
+}
+
+message UpdateDraftRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string product_id = 3;
+  int64 expected_version = 4; // concorrência otimista
+  repeated LocalizedText titles = 5;
+  map<string, string> attributes = 6;
+}
+
+message UpdateDraftResponse {
+  string product_id = 1;
+  int64 aggregate_version = 2;
+  bool accepted = 3;
+  string reason = 4;          // vazio se aceito
+}
+
+message DeleteDraftRequest {
+  string product_id = 1;
+  string actor_sub = 2;
+}
+
+message DeleteDraftResponse {
+  bool accepted = 1;
+  string reason = 2;
+}
+
+message UnpublishProductRequest {
+  string request_id = 1;
+  string approval_token = 2;  // token HMAC do Control (four-eyes)
+  string product_id = 3;
+  int64 expected_version = 4;
+  string market_id = 5;
+  string reason = 6;          // auditoria (motivo da retirada)
+}
+
+message UnpublishProductResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string event_id = 3;        // ProductUnpublished
+  string reason = 4;
 }
 
 message SkuView { string sku_id = 1; string sku_code = 2; }

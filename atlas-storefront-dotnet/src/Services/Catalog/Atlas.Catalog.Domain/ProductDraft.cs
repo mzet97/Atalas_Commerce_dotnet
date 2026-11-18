@@ -91,10 +91,13 @@ public sealed partial class ProductDraft
     public LocalizedText? TitleFor(Locale locale) =>
         _titles.TryGetValue(locale.Value, out var t) ? t : null;
 
-    /// <summary>Submete para aprovação: exige ao menos um título (regra mínima do UC-005).</summary>
+    /// <summary>
+    /// Submete para aprovação: exige ao menos um título (regra mínima do UC-005).
+    /// Vale para rascunho novo E para republicação após despublicar (loop editorial).
+    /// </summary>
     public void SubmitForApproval()
     {
-        if (Status != ProductStatus.Draft)
+        if (Status is not (ProductStatus.Draft or ProductStatus.Unpublished))
             throw new InvalidOperationException($"Transição inválida: {Status} → PendingApproval");
         if (_titles.Count == 0)
             throw new InvalidOperationException("Produto sem título localizado não pode ser submetido");

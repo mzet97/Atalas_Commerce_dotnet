@@ -18,6 +18,8 @@ channels:
         $ref: '#/components/messages/domainEvent'
       product.updated:
         $ref: '#/components/messages/domainEvent'
+      product.unpublished:
+        $ref: '#/components/messages/domainEvent'
   atlas.offers.v1:
     address: atlas.offers.v1
     messages:

@@ -36,6 +36,17 @@ public class ProductDraftTests
         Assert.Throws<InvalidOperationException>(product.SubmitForApproval);
     }
 
+    [Fact]
+    public void Despublicado_pode_ser_resubmetido()
+    {
+        var p = ProductDraft.Create().WithTitle("pt-BR", "X").AddSku("SKU-1", new Dictionary<string, string>());
+        p.SubmitForApproval();
+        p.Publish("admin", DateTimeOffset.UtcNow);
+        p.Unpublish("op", "pausa", DateTimeOffset.UtcNow);
+        p.SubmitForApproval();
+        Assert.Equal(ProductStatus.PendingApproval, p.Status);
+    }
+
     [Theory]
     [InlineData("pt-BR")]
     [InlineData("en-US")]
@@ -59,5 +70,67 @@ public class ProductDraftTests
     public void Título_vazio_é_rejeitado()
     {
         Assert.Throws<ArgumentException>(() => ProductDraft.Create().WithTitle("pt-BR", "  "));
+    }
+
+    [Fact]
+    public void Editar_titulos_do_rascunho_substitui_e_incrementa_versao()
+    {
+        var p = ProductDraft.Create().WithTitle("pt-BR", "Velho");
+        var v0 = p.Version;
+        p.UpdateTitles([("pt-BR", "Novo"), ("en-US", "New")]);
+        Assert.Equal("Novo", p.TitleFor(new Locale("pt-BR"))!.Text);
+        Assert.Equal("New", p.TitleFor(new Locale("en-US"))!.Text);
+        Assert.True(p.Version > v0);
+    }
+
+    [Fact]
+    public void Editar_publicado_é_rejeitado()
+    {
+        var p = ProductDraft.Create().WithTitle("pt-BR", "X");
+        p.AddSku("SKU-1", new Dictionary<string, string>());
+        p.SubmitForApproval();
+        p.Publish("admin", DateTimeOffset.UtcNow);
+        Assert.Throws<InvalidOperationException>(() => p.UpdateTitles([("pt-BR", "Y")]));
+    }
+
+    [Fact]
+    public void Remover_só_rascunho()
+    {
+        ProductDraft.Create().EnsureDeletable();
+        var pendente = ProductDraft.Create().WithTitle("pt-BR", "X");
+        pendente.AddSku("SKU-1", new Dictionary<string, string>());
+        pendente.SubmitForApproval();
+        Assert.Throws<InvalidOperationException>(pendente.EnsureDeletable);
+    }
+
+    [Fact]
+    public void Despublicar_publicado_emite_evento_e_muda_estado()
+    {
+        var p = ProductDraft.Create().WithTitle("pt-BR", "X");
+        p.AddSku("SKU-1", new Dictionary<string, string>());
+        p.SubmitForApproval();
+        p.Publish("admin", DateTimeOffset.UtcNow);
+        var evt = p.Unpublish("operador", "fora de linha", DateTimeOffset.UtcNow);
+        Assert.Equal(ProductStatus.Unpublished, p.Status);
+        Assert.Equal(p.Id, evt.ProductId);
+        Assert.Equal("operador", evt.ActorSub);
+        Assert.Equal(p.Version, evt.AggregateVersion);
+    }
+
+    [Fact]
+    public void Despublicar_nao_publicado_é_rejeitado()
+    {
+        var p = ProductDraft.Create().WithTitle("pt-BR", "X");
+        Assert.Throws<InvalidOperationException>(() => p.Unpublish("op", "motivo", DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Despublicar_sem_motivo_é_rejeitado()
+    {
+        var p = ProductDraft.Create().WithTitle("pt-BR", "X");
+        p.AddSku("SKU-1", new Dictionary<string, string>());
+        p.SubmitForApproval();
+        p.Publish("admin", DateTimeOffset.UtcNow);
+        Assert.Throws<ArgumentException>(() => p.Unpublish("op", "", DateTimeOffset.UtcNow));
     }
 }
