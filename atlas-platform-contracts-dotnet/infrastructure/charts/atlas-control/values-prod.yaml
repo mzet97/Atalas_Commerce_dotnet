@@ -26,5 +26,5 @@ host:
       key: approval-token-secret
 web:
   enabled: true
-  image: { repository: atlas/control-web, tag: "local-f3" }
+  image: { repository: atlas/control-web, tag: "local-f4" }
   containerPort: 4200

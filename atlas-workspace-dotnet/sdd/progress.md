@@ -243,3 +243,21 @@
 - Dono registrou no roteador: `gateway.home.arpa`, `vitrine.home.arpa`, `keycloak.home.arpa` → `192.168.1.51` (confere com a rota do Keycloak no ansible).
 - Achado: os HTTPRoutes já existiam no cluster (apply retornou `configured`, não `created`) — faltava só o DNS. Ambos `Accepted=True, Programmed=True`.
 - E2E externo real: `https://vitrine.home.arpa/` → 200 com redirect para `/pt-BR` (i18n); `https://gateway.home.arpa/api/catalog/products` → JSON real de produtos (cadeia Traefik→gateway→PG `.52` íntegra). 301 em HTTP puro é o redirect para HTTPS do Traefik, esperado.
+
+## 2026-11-18 → Keycloak recuperado + achados versionados
+
+- Sintoma: página `somethingWentWrong` no Keycloak. Causa raiz: `FATAL: remaining connection slots are reserved for SUPERUSER` — pools dos clientes (Keycloak agroal max 100 + Npgsql × serviços) estouraram `max_connections=100` do PG `.52`.
+- Correção: `max_connections` 100→300. Detalhe que custou um restart à toa: o valor efetivo vinha de `conf.d/01-hardening-tuning.conf` (sobrescreve `postgresql.conf`; SDD: checar `pg_settings.source`). Após restart: 300 ativo; Keycloak sem novos erros e well-known público 200. Clientes com pool sem teto seguem como dívida (folga atual ~5×).
+- Achados versionados em 3 commits locais (sem push): `9700d64` manifests F4 (values-prod ×2, rotas, docker+runbook, secrets só `.example` — repo é público), `f784b45` correções da tree, `f37ac51` fatias WIP. `login.spec.ts` segue não executado (sem infra de browser).
+
+## 2026-11-18 → Rota do admin + URL do Keycloak
+
+- `somethingWentWrong` no print: URL digitada `keycloak.home.arpa` (troca de letras) — o correto é `https://keycloak.home.arpa/...`. "Not secure" é o cert do `local-ca`; aceitar exceção uma vez.
+- Frontend admin existia (`atlas-control-web` Running) mas sem rota externa — criado `control-route.yaml` (`control.home.arpa` → control-web) e aplicado (`Accepted=True`). Validado via Host override (serve o HTML `ControlAngular`); falta o 4º registro DNS no roteador. App Angular ainda é casca base (sem chamadas HTTP) — sem necessidade de rota de API por ora.
+
+## 2026-11-18 → Console admin completo (escopo dono: console completo)
+
+- Front: Angular 22 + keycloak-js (PKCE, client `control-angular`), guard por roles do realm, ApiService same-origin `/api` → nginx → `atlas-control-host` (sem CORS). Páginas: aprovações (fila/detalhe/decidir/despachar), solicitar ajuste, auditoria (lista/verificar/export CSV), grants (criar/revogar), reembolsos (token), operação (outboxes/lag CQRS).
+- Realm: `redirectUris`+`webOrigins` de `control.home.arpa` adicionados no `realm-atlas.json` (ansible, fonte) E no realm vivo via Admin API (204). Bootstrap admin ainda `Admin@123` (trocar no 1º login — pendente do dono).
+- Deploy: imagem `atlas/control-web:local-f4` (build no `.51` a partir do contexto monorepo, import via `ctr` no socket do k3s), `values-prod` atualizado, `helm upgrade dotnet-control` OK (rota `atlas-control` adotada no release — tinha sido criada via kubectl).
+- Verificado sem browser: `control.home.arpa` 200 com bundle novo, `/api/modules/approvals/status` responde pelo proxy, lista sem token 200 (conforme API: leitura sem policy, escrita com roles). Login interativo + fluxos de aprovar/despachar pendem de teste no navegador do dono.
