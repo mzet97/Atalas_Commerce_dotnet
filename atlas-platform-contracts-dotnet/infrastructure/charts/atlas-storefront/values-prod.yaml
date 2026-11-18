@@ -7,7 +7,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/gateway
-      tag: "local-f3"
+      tag: "local-f4"
     containerPort: 8080
     replicaCount: 2
     hpa:
@@ -75,6 +75,11 @@ atlasService:
       - envName: Mongo__ConnectionString
         name: atlas-data
         key: mongo-connstr
+      # Four-eyes com o Control: MESMO segredo que assina os tokens (atlas-hmac).
+      # Sem isto o owner cai no default hardcoded e rejeita toda aprovação (403 auditado).
+      - envName: Approval__TokenSecret
+        name: atlas-hmac
+        key: approval-token-secret
     networkPolicy:
       enabled: true
       allowFromApp: ""
@@ -141,6 +146,10 @@ atlasService:
       - envName: Mongo__ConnectionString
         name: atlas-data
         key: mongo-connstr
+      # Four-eyes com o Control: MESMO segredo que assina os tokens (atlas-hmac).
+      - envName: Approval__TokenSecret
+        name: atlas-hmac
+        key: approval-token-secret
     networkPolicy:
       enabled: true
       allowFromApp: ""

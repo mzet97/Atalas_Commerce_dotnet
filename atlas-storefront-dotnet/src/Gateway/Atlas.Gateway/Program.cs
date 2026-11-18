@@ -32,6 +32,8 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
 // Auth:Mode=TestHmac (SOMENTE testes: Auth:TestSigningKey HMAC de 32+ bytes; nunca nos charts prod)
 var authMode = builder.Configuration["Auth:Mode"] ?? "Keycloak";
 var authority = builder.Configuration["Auth:Authority"] ?? "http://127.0.0.1:8080/realms/atlas";
+// Split-horizon Keycloak: browser recebe iss da URL pública — aceitar os dois emissores.
+var publicAuthority = builder.Configuration["Auth:PublicAuthority"] ?? "https://keycloak.home.arpa/realms/atlas";
 var testKey = builder.Configuration["Auth:TestSigningKey"];
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
@@ -53,6 +55,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         o.Authority = authority;
         o.TokenValidationParameters = new TokenValidationParameters
         {
+            ValidateIssuer = true,
+            ValidIssuers = new[] { authority, publicAuthority },
             ValidateAudience = false,
             NameClaimType = "preferred_username",
         };

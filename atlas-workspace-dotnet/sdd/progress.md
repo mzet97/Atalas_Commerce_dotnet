@@ -261,3 +261,17 @@
 - Realm: `redirectUris`+`webOrigins` de `control.home.arpa` adicionados no `realm-atlas.json` (ansible, fonte) E no realm vivo via Admin API (204). Bootstrap admin ainda `Admin@123` (trocar no 1º login — pendente do dono).
 - Deploy: imagem `atlas/control-web:local-f4` (build no `.51` a partir do contexto monorepo, import via `ctr` no socket do k3s), `values-prod` atualizado, `helm upgrade dotnet-control` OK (rota `atlas-control` adotada no release — tinha sido criada via kubectl).
 - Verificado sem browser: `control.home.arpa` 200 com bundle novo, `/api/modules/approvals/status` responde pelo proxy, lista sem token 200 (conforme API: leitura sem policy, escrita com roles). Login interativo + fluxos de aprovar/despachar pendem de teste no navegador do dono.
+
+## 2026-11-18 → Publicações no console + 3 bugs reais achados pelo E2E
+
+- Escopo dono ("console completo" + "CRUD no control"): fluxo publicar produto — `GET /approvals` + `GET /approvals/{id}` novos na API (lista server-side, mesmo padrão `/modules/approvals`) e páginas Publicações (lista/filtro, solicitar, detalhar/decidir/despachar). Silent-SSO no reload/deep-link (`silent-check-sso.html`).
+- **Bug 1 — issuer split-horizon**: browser recebe `iss=https://keycloak.home.arpa`, host validava só o interno → 401 em tudo autenticado. Fix: `ValidIssuers` = {interno, público} no Control e no Gateway.
+- **Bug 2 — `anonymous`**: tokens sem claim `sub` caíam no fallback final; `ApprovalsModule.Sub` não tinha o fallback `preferred_username` (o de inventário tinha). Fix nos dois `Sub` + middleware 403. Prova: aprovação passou a registrar `customer-smoke`.
+- **Bug 3 — HMAC divergente**: catalog/inventory owners sem `Approval:TokenSecret` no values caíam no default hardcoded → owner rejeitava tudo (`assinatura`). Fix: segredo `atlas-hmac/approval-token-secret` nos dois owners.
+- **E2E ponta a ponta REAL (Playwright, `tmp/ctrl-verify/`)**: smoke solicita → approver temporário decide → dispatch → owner publica → **Executed**; produto "Teclado Atlas K70 E2E" apareceu na busca da vitrine (outbox→Kafka→projeção→PG→gateway). Trilha de auditoria encadeada cobre tudo (incl. self-approval negado e version-conflict). Temporários removidos (SA client, approver, grant do smoke, directAccessGrants revertido) e túneis fechados.
+
+## 2026-11-18 → Login atrás do Traefik (form http → https)
+
+- Sintoma: Chrome "The information you're about to submit is not secure" — o form de login do Keycloak saía com `action=http://`. Causa: sem `--proxy-headers`, o Keycloak ignorava `X-Forwarded-Proto` e gerava URLs no esquema do backend (http).
+- Correção: `--proxy-headers=xforwarded` no `20-deployment.yaml` (ansible, fonte) + patch no deploy vivo + rollout. Prova: fluxo OIDC completo agora permanece em https (`.../auth` → login → redirect de volta para `https://control.home.arpa/`; erro `code_challenge_method` no teste manual é esperado — curl sem PKCE).
+- Verificação headless (Playwright + Chrome, `/tmp/ctrl-verify/`): console 708ms, ida ao Keycloak 133ms, **form action https confirmado no DOM**, credenciais `atlas-admin` aceitas → página de TOTP setup (screenshot lido). Zero erros JS. TOTP NÃO configurado de propósito — dono vincula o próprio autenticador.
