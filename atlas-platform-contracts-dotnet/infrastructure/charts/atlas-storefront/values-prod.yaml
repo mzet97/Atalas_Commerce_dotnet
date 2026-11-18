@@ -381,7 +381,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/storefront-web
-      tag: "local-f3"
+      tag: "local-f17"
     containerPort: 3000
     replicaCount: 1
     hpa:

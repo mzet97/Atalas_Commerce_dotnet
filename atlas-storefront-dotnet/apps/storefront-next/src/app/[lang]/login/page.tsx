@@ -18,7 +18,7 @@ export default async function LoginPage({
     button: t("login.button"),
   };
   return (
-    <section data-testid="login-page">
+    <section data-testid="login-page" className="login-wrap">
       <h1>{t("login.title")}</h1>
       <LoginPanel locale={locale} labels={labels} />
     </section>

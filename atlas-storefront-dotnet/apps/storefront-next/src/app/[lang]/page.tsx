@@ -2,12 +2,22 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { isLocale, translator, type Locale } from "@atlas/lib/i18n";
 import { searchProducts, type SearchItem } from "@atlas/lib/storefront";
-import { SearchBox } from "@atlas/components/SearchBox";
+import { ProductThumb } from "@atlas/components/ProductThumb";
 
 export const metadata = { title: "Home" };
 
-// Busca + facets no MESMO bloco dinâmico (uma única leitura da view; cacheComponents
-// exige leitura dinâmica dentro de Suspense)
+function PerkIcon({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d={d} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Busca no MESMO bloco dinâmico (uma única leitura da view; cacheComponents
+// exige leitura dinâmica dentro de Suspense). O cabeçalho da seção é estático
+// (q vem dos searchParams, conhecidos no servidor); só a grade faz streaming,
+// com esqueleto de mesma altura (sem CLS).
 async function Catalog({
   locale,
   searchParams,
@@ -26,23 +36,19 @@ async function Catalog({
 
   return (
     <>
-      <SearchBox
-        locale={locale}
-        labels={{ placeholder: t("search.placeholder"), button: t("search.button"), all: t("search.facets.all") }}
-        initialQuery={q ?? ""}
-        initialMarket={market ?? ""}
-        facets={result.facets}
-      />
       {result.items.length === 0 && <p data-testid="empty-state">{t("search.empty")}</p>}
       <ul className="grid" data-testid="product-list">
         {result.items.map((item: SearchItem) => (
           <li key={item.productId} className="card" data-testid="product-item">
             <Link href={`/${locale}/produto/${item.productId}`}>
-              <strong>{item.title}</strong>
+              <ProductThumb label={item.title} />
+              <span className="card-info">
+                <span className="card-market">{item.marketId}</span>
+                <strong className="card-title">{item.title}</strong>
+                {item.status !== "Published" && <span className="status-flag">{item.status}</span>}
+                <span className="card-cta">{t("home.viewOffer")}</span>
+              </span>
             </Link>
-            <small>
-              {t("product.market")}: {item.marketId}
-            </small>
           </li>
         ))}
       </ul>
@@ -57,6 +63,24 @@ async function Catalog({
         )}
       </div>
     </>
+  );
+}
+
+// Esqueleto com a mesma estrutura/altura dos cards reais (thumb 4:3 + linhas).
+function GridSkeleton() {
+  return (
+    <ul className="grid" aria-hidden="true">
+      {Array.from({ length: 8 }, (_, i) => (
+        <li key={i} className="card">
+          <div className="thumb" />
+          <span className="card-info">
+            <span className="skel-line short" />
+            <span className="skel-line tall" />
+            <span className="skel-line cta" />
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -87,11 +111,28 @@ async function Home({
   if (!isLocale(lang)) return null;
   const locale = lang as Locale;
   const t = translator(locale);
+  const q = (await searchParams).q;
 
   return (
     <div className="page">
-      <h1>{t("store.tagline")}</h1>
-      <Suspense fallback={<p data-testid="loading">…</p>}>
+      <div className="perks">
+        <div className="perk">
+          <PerkIcon d="M3 7h13v9H3zM16 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm11 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+          <div><strong>{t("home.perkQuote")}</strong><span>{t("home.perkQuoteSub")}</span></div>
+        </div>
+        <div className="perk">
+          <PerkIcon d="M12 3 3 8l9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5" />
+          <div><strong>{t("home.perkMarket")}</strong><span>{t("home.perkMarketSub")}</span></div>
+        </div>
+        <div className="perk">
+          <PerkIcon d="M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6l7-3Z" />
+          <div><strong>{t("home.perkStock")}</strong><span>{t("home.perkStockSub")}</span></div>
+        </div>
+      </div>
+      <div className="section-head">
+        <h2>{q ? t("search.resultsFor") : t("home.featured")}</h2>
+      </div>
+      <Suspense fallback={<GridSkeleton />}>
         <Catalog locale={locale} searchParams={searchParams} />
       </Suspense>
     </div>

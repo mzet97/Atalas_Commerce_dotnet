@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import "@atlas/app/globals.css";
 import { isLocale, LOCALES, translator as getTranslator, type Locale } from "@atlas/lib/i18n";
 import { CartWidget } from "@atlas/components/CartWidget";
+import { HeaderSearchSlot } from "@atlas/components/HeaderSearchSlot";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.STOREFRONT_URL ?? "http://localhost:3000"),
@@ -32,33 +33,59 @@ export default async function LangLayout({
   return (
     <html lang={locale}>
       <body>
-        <header className="topbar">
-          <Link href={`/${locale}`} className="brand" data-testid="brand">
-            {t("store.name")}
-          </Link>
-          <nav aria-label={t("nav.cart")}>
-            <ul className="locale-switch" data-testid="locale-switch">
-              {LOCALES.map((l) => (
-                <li key={l}>
-                  <Link
-                    href={`/${l}`}
-                    aria-current={l === locale ? "page" : undefined}
-                    data-testid={`lang-${l}`}
-                  >
-                    {l.toUpperCase().slice(0, 2)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <CartWidget locale={locale} label={t("nav.cart")} />
-            <Link href={`/${locale}/login`} data-testid="nav-login">
-              {t("nav.login")}
+        <header className="ml-top">
+          <div className="ml-top-inner">
+            <Link href={`/${locale}`} className="brand" data-testid="brand">
+              Atlas<small>{t("store.tagline")}</small>
             </Link>
-          </nav>
+            <HeaderSearchSlot
+              locale={locale}
+              labels={{ placeholder: t("search.placeholder"), button: t("search.button"), all: t("search.facets.all") }}
+            />
+            <nav className="ml-account" aria-label={t("nav.cart")}>
+              <Link href={`/${locale}/login`} data-testid="nav-login">
+                {t("nav.login")}
+              </Link>
+              <CartWidget locale={locale} label={t("nav.cart")} />
+            </nav>
+          </div>
+          <div className="ml-locale">
+            <div className="ml-locale-inner">
+              <ul className="locale-switch" data-testid="locale-switch">
+                {LOCALES.map((l) => (
+                  <li key={l}>
+                    <Link
+                      href={`/${l}`}
+                      aria-current={l === locale ? "page" : undefined}
+                      data-testid={`lang-${l}`}
+                    >
+                      {l.toUpperCase().slice(0, 2)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </header>
         <main id="main">{children}</main>
-        <footer className="footer">
-          <small>{t("footer.evd")}</small>
+        <footer className="ml-footer">
+          <div className="ml-footer-inner">
+            <div>
+              <h3>{t("footer.colShop")}</h3>
+              <p>{t("footer.colShopText")}</p>
+            </div>
+            <div>
+              <h3>{t("footer.colQuote")}</h3>
+              <p>{t("footer.colQuoteText")}</p>
+            </div>
+            <div>
+              <h3>{t("footer.colOps")}</h3>
+              <p>{t("footer.colOpsText")}</p>
+            </div>
+          </div>
+          <div className="ml-evd">
+            <small>{t("footer.evd")}</small>
+          </div>
         </footer>
       </body>
     </html>

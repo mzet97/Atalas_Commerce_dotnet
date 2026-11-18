@@ -17,7 +17,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ lang:
         locale={locale}
         labels={{
           total: t("cart.total"),
-          customerName: t("checkout.customer"),
+          customer: t("checkout.customer"),
           country: t("checkout.country"),
           postalCode: t("checkout.postalCode"),
           addressLine1: t("checkout.addressLine1"),

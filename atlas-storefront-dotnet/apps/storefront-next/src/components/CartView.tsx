@@ -48,70 +48,74 @@ export function CartView({
     );
 
   return (
-    <div data-testid="cart-view">
-      <table>
-        <caption className="sr-only">{labels.title}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{labels.item}</th>
-            <th scope="col">{labels.quantity}</th>
-            <th scope="col">{labels.unitPrice}</th>
-            <th scope="col">{labels.remove}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l) => (
-            <tr key={l.skuId} data-testid={`cart-line-${l.skuId}`}>
-              <td>{l.title}</td>
-              <td>
-                <input
-                  type="number"
-                  min={1}
-                  width={3}
-                  value={l.quantity}
-                  aria-label={`${labels.quantity} ${l.title}`}
-                  data-testid={`qty-${l.skuId}`}
-                  onChange={(e) => setQuantity(l.skuId, Number(e.target.value))}
-                />
-              </td>
-              <td>{formatMoney(l.unitPriceMinor, l.currency, locale)}</td>
-              <td>
-                <button type="button" onClick={() => removeFromCart(l.skuId)} data-testid={`remove-${l.skuId}`}>
-                  ✕
-                </button>
-              </td>
+    <div data-testid="cart-view" className="cart-layout">
+      <div className="cart-lines">
+        <table>
+          <caption className="sr-only">{labels.title}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{labels.item}</th>
+              <th scope="col">{labels.quantity}</th>
+              <th scope="col">{labels.unitPrice}</th>
+              <th scope="col">{labels.remove}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="total" data-testid="cart-total">
-        {labels.total}: <strong>{formatMoney(totalMinor, currency, locale)}</strong>
-      </p>
-
-      <div className="quotebox">
-        {quote ? (
-          <div data-testid="quote-result">
-            <p>
-              {labels.quoteReady}: <strong>{formatMoney(quote.totalMinor, quote.currency, locale)}</strong>
-            </p>
-            <p>
-              <small>{labels.quoteExpires}: {new Date(quote.expiresAtUtc).toLocaleTimeString(locale)}</small>
-            </p>
-            <Link href={`/${locale}/checkout`} className="primary" data-testid="go-checkout">
-              {labels.checkout}
-            </Link>
-          </div>
-        ) : (
-          <button type="button" className="primary" onClick={emitQuote} disabled={quoting} data-testid="request-quote">
-            {quoting ? labels.quoting : labels.quote}
-          </button>
-        )}
-        {error && (
-          <p role="alert" data-testid="quote-error">
-            {error}
-          </p>
-        )}
+          </thead>
+          <tbody>
+            {lines.map((l) => (
+              <tr key={l.skuId} data-testid={`cart-line-${l.skuId}`}>
+                <td>{l.title}</td>
+                <td>
+                  <input
+                    type="number"
+                    min={1}
+                    width={3}
+                    value={l.quantity}
+                    aria-label={`${labels.quantity} ${l.title}`}
+                    data-testid={`qty-${l.skuId}`}
+                    onChange={(e) => setQuantity(l.skuId, Number(e.target.value))}
+                  />
+                </td>
+                <td>{formatMoney(l.unitPriceMinor, l.currency, locale)}</td>
+                <td>
+                  <button type="button" onClick={() => removeFromCart(l.skuId)} data-testid={`remove-${l.skuId}`} aria-label={`${labels.remove} ${l.title}`}>
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      <aside className="summary" aria-label={labels.summary}>
+        <h2>{labels.summary}</h2>
+        <p className="total" data-testid="cart-total">
+          {labels.total}: <strong>{formatMoney(totalMinor, currency, locale)}</strong>
+        </p>
+        <div className="quotebox">
+          {quote ? (
+            <div data-testid="quote-result">
+              <p>
+                {labels.quoteReady}: <strong>{formatMoney(quote.totalMinor, quote.currency, locale)}</strong>
+              </p>
+              <p>
+                <small>{labels.quoteExpires}: {new Date(quote.expiresAtUtc).toLocaleTimeString(locale)}</small>
+              </p>
+              <Link href={`/${locale}/checkout`} className="primary" data-testid="go-checkout">
+                {labels.checkout}
+              </Link>
+            </div>
+          ) : (
+            <button type="button" className="primary" onClick={emitQuote} disabled={quoting} data-testid="request-quote">
+              {quoting ? labels.quoting : labels.quote}
+            </button>
+          )}
+          {error && (
+            <p role="alert" data-testid="quote-error">
+              {error}
+            </p>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }

@@ -47,9 +47,9 @@ export function LoginPanel({
   }
 
   return (
-    <div data-testid="login-form">
+    <div data-testid="login-form" className="login-card">
       <p>{labels.blurb}</p>
-      <button type="button" data-testid="login" onClick={() => beginLogin(locale)}>
+      <button type="button" className="primary" data-testid="login" onClick={() => beginLogin(locale)}>
         {labels.button}
       </button>
     </div>

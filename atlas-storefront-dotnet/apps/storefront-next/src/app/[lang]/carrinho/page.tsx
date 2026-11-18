@@ -30,6 +30,7 @@ export default async function CartPage({ params }: { params: Promise<{ lang: str
           checkout: t("cart.checkout"),
           empty: t("cart.empty"),
           backToStore: t("nav.home"),
+          summary: t("cart.summary"),
         }}
       />
     </div>
