@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { isLocale, translator, formatMoney, type Locale } from "@atlas/lib/i18n";
 import { getProduct } from "@atlas/lib/storefront";
 import { AddToCart } from "@atlas/components/AddToCart";
-import { ProductThumb } from "@atlas/components/ProductThumb";
+import { ProductGallery } from "@atlas/components/ProductGallery";
 
 // título estático no metadata (a leitura dinâmica fica no corpo, dentro de Suspense)
 export const metadata = { title: "Produto" };
@@ -32,7 +32,7 @@ async function ProductDetails({ params }: { params: Promise<{ lang: string; id: 
       <div className="pdp">
         <div className="pdp-main">
           <div className="pdp-gallery">
-            <ProductThumb big label={product.title} />
+            <ProductGallery images={product.images} title={product.title} />
           </div>
           <div className="pdp-buybox">
             <p className="pdp-market">

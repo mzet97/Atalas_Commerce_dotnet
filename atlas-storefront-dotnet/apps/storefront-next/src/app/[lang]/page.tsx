@@ -41,7 +41,14 @@ async function Catalog({
         {result.items.map((item: SearchItem) => (
           <li key={item.productId} className="card" data-testid="product-item">
             <Link href={`/${locale}/produto/${item.productId}`}>
-              <ProductThumb label={item.title} />
+              {item.coverUrl ? (
+                <span className="thumb photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.coverUrl} alt={item.title} loading="lazy" />
+                </span>
+              ) : (
+                <ProductThumb label={item.title} />
+              )}
               <span className="card-info">
                 <span className="card-market">{item.marketId}</span>
                 <strong className="card-title">{item.title}</strong>

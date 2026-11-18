@@ -79,12 +79,14 @@ a:hover { text-decoration: underline; }
   flex-wrap: wrap;
   margin-top: 8px;
   padding-bottom: 4px;
-  min-height: 30px; /* reserva a altura dos chips: streaming sem CLS */
+  min-height: 26px; /* reserva a altura dos chips: streaming sem CLS */
 }
 .facets button {
   background: none;
   border: none;
-  padding: 2px 0;
+  padding: 0;
+  height: 26px; /* altura fixa: esqueleto e chips reais ocupam o mesmo espaço */
+  line-height: 26px;
   cursor: pointer;
   font-size: 13.5px;
   color: rgba(0, 0, 0, 0.6);
@@ -170,6 +172,13 @@ ul.grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-
 }
 .thumb svg { width: 56px; height: 56px; color: #c4c4c4; }
 .thumb.big svg { width: 120px; height: 120px; }
+.thumb.photo { padding: 0; overflow: hidden; }
+.thumb.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gallery-view { display: flex; flex-direction: column; gap: 10px; }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.thumb.mini { width: 72px; aspect-ratio: 1 / 1; padding: 0; overflow: hidden; cursor: pointer; background: #fff; border: 2px solid transparent; }
+.thumb.mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.mini.active { border-color: var(--ml-blue-dark); }
 .card-info { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; }
 .card-title {
   font-size: 14px;

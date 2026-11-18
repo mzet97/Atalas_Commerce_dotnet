@@ -7,6 +7,7 @@ export type SearchItem = {
   marketId: string;
   status: string;
   sourceVersion: number;
+  coverUrl?: string | null;
 };
 
 export type SearchResult = {
@@ -32,6 +33,7 @@ export type ProductDetail = {
   status: string;
   sourceVersion: number;
   skus: string[];
+  images: string[];
   offers: OfferView[];
   availabilityHint: { skuId: string; availableHint: number }[];
 };
