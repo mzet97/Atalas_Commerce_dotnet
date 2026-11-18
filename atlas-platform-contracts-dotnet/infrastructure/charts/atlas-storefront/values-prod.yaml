@@ -7,7 +7,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/gateway
-      tag: "local-f4"
+      tag: "local-f5"
     containerPort: 8080
     replicaCount: 2
     hpa:
@@ -29,6 +29,8 @@ atlasService:
         value: Keycloak
       - name: Auth__Authority
         value: http://keycloak.keycloak.svc:8080/realms/atlas
+      - name: Media__PublicBaseUrl
+        value: https://minio-s3.home.arpa/atlas-catalog
       - name: Kestrel__Endpoints__Http__Url
         value: http://+:8080
     secrets:
@@ -47,7 +49,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/catalog-api
-      tag: "local-f4"
+      tag: "local-f8"
     containerPort: 8080
     extraPorts:
       - name: grpc
@@ -71,10 +73,24 @@ atlasService:
         value: http://+:5295
       - name: Kestrel__Endpoints__Grpc__Protocols
         value: Http2
+      - name: Media__S3__ServiceUrl
+        value: http://minio-service.minio:9000
+      - name: Media__S3__PresignServiceUrl
+        value: https://minio-s3.home.arpa
+      - name: Media__Bucket
+        value: atlas-catalog
+      - name: Media__PublicBaseUrl
+        value: https://minio-s3.home.arpa/atlas-catalog
     secrets:
       - envName: Mongo__ConnectionString
         name: atlas-data
         key: mongo-connstr
+      - envName: Media__S3__AccessKey
+        name: atlas-minio
+        key: s3-access-key
+      - envName: Media__S3__SecretKey
+        name: atlas-minio
+        key: s3-secret-key
       # Four-eyes com o Control: MESMO segredo que assina os tokens (atlas-hmac).
       # Sem isto o owner cai no default hardcoded e rejeita toda aprovação (403 auditado).
       - envName: Approval__TokenSecret
@@ -351,7 +367,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/projections
-      tag: "local-f4"
+      tag: "local-f5"
     containerPort: 8080
     replicaCount: 1
     hpa:
@@ -381,7 +397,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/storefront-web
-      tag: "local-f17"
+      tag: "local-f19"
     containerPort: 3000
     replicaCount: 1
     hpa:

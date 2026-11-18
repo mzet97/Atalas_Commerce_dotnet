@@ -120,6 +120,7 @@ public sealed class MongoCatalogStore : ICatalogStore
                     ["title"] = doc.ToDomain().TitleFor(new Locale("pt-BR"))?.Text
                                 ?? doc.ToDomain().Titles.FirstOrDefault()?.Text ?? "",
                     ["aggregate_version"] = @event.AggregateVersion,
+                    ["image_keys"] = new BsonArray(doc.Images.Select(i => i.Key)),
                 }), cancellationToken: token);
 
             return new PublishOutcome(true, @event.AggregateVersion, eventId.ToString(), null);
@@ -165,7 +166,8 @@ public sealed class MongoCatalogStore : ICatalogStore
             .ToListAsync(ct);
         return ([.. docs.Select(d => new CatalogDraftSummary(
             d.Id, d.Status.ToString(), d.Version, d.MarketId,
-            [.. d.Titles.Select(t => (t.Locale, t.Text))], d.Skus.Count, d.CreatedBy))], total);
+            [.. d.Titles.Select(t => (t.Locale, t.Text))], d.Skus.Count, d.CreatedBy,
+            [.. (d.Images ?? []).Select(i => (i.Key, i.ContentType, i.SizeBytes))]))], total);
     }
 
     /// <summary>Edição de rascunho com CAS (títulos/atributos; SKUs continuam append-only).</summary>
@@ -252,6 +254,92 @@ public sealed class MongoCatalogStore : ICatalogStore
         }, cancellationToken: ct);
     }
 
+    /// <summary>Anexa imagem validada (HEAD) com CAS; em Published emite
+    /// Product.ImagesUpdatedV1 na mesma transação para a projeção.</summary>
+    public async Task<PublishOutcome> AttachImageAsync(
+        ProductId productId, long expectedVersion, string objectKey, string contentType, long sizeBytes,
+        string actorSub, string correlationId, CancellationToken ct)
+    {
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var doc = await Products().Find(s, p => p.Id == productId.Value).FirstOrDefaultAsync(cancellationToken: token);
+            if (doc is null) return new PublishOutcome(false, 0, null, "produto inexistente");
+            if (doc.Version != expectedVersion)
+                return new PublishOutcome(false, doc.Version, null, $"conflito de versão (esperado {expectedVersion}, atual {doc.Version})");
+            var draft = doc.ToDomain();
+            try
+            {
+                draft.AttachImage(objectKey, contentType, sizeBytes, DateTimeOffset.UtcNow);
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                return new PublishOutcome(false, doc.Version, null, ex.Message);
+            }
+            var fresh = ProductDoc.From(draft, doc.RequestId, doc.MarketId, doc.CreatedBy);
+            fresh.CreatedAtUtc = doc.CreatedAtUtc;
+            fresh.Version = draft.Version;
+            var result = await Products().ReplaceOneAsync(s,
+                p => p.Id == productId.Value && p.Version == expectedVersion, fresh, cancellationToken: token);
+            if (result.ModifiedCount != 1)
+                return new PublishOutcome(false, doc.Version, null, "conflito de concorrência");
+            string? eventId = null;
+            if (draft.Status == ProductStatus.Published)
+                eventId = await EmitImagesUpdatedAsync(s, productId, draft, correlationId, token);
+            return new PublishOutcome(true, draft.Version, eventId, null);
+        }, cancellationToken: ct);
+    }
+
+    /// <summary>Desanexa imagem com CAS; em Published emite Product.ImagesUpdatedV1.</summary>
+    public async Task<PublishOutcome> DetachImageAsync(
+        ProductId productId, long expectedVersion, string objectKey, string actorSub, string correlationId, CancellationToken ct)
+    {
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var doc = await Products().Find(s, p => p.Id == productId.Value).FirstOrDefaultAsync(cancellationToken: token);
+            if (doc is null) return new PublishOutcome(false, 0, null, "produto inexistente");
+            if (doc.Version != expectedVersion)
+                return new PublishOutcome(false, doc.Version, null, $"conflito de versão (esperado {expectedVersion}, atual {doc.Version})");
+            var draft = doc.ToDomain();
+            try
+            {
+                draft.DetachImage(objectKey);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return new PublishOutcome(false, doc.Version, null, ex.Message);
+            }
+            var fresh = ProductDoc.From(draft, doc.RequestId, doc.MarketId, doc.CreatedBy);
+            fresh.CreatedAtUtc = doc.CreatedAtUtc;
+            fresh.Version = draft.Version;
+            var result = await Products().ReplaceOneAsync(s,
+                p => p.Id == productId.Value && p.Version == expectedVersion, fresh, cancellationToken: token);
+            if (result.ModifiedCount != 1)
+                return new PublishOutcome(false, doc.Version, null, "conflito de concorrência");
+            string? eventId = null;
+            if (draft.Status == ProductStatus.Published)
+                eventId = await EmitImagesUpdatedAsync(s, productId, draft, correlationId, token);
+            return new PublishOutcome(true, draft.Version, eventId, null);
+        }, cancellationToken: ct);
+    }
+
+    private async Task<string> EmitImagesUpdatedAsync(
+        IClientSessionHandle s, ProductId productId, ProductDraft draft, string correlationId, CancellationToken token)
+    {
+        var eventId = Guid.NewGuid();
+        await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
+            eventId, "Product.ImagesUpdatedV1", productId.Value.ToString(), correlationId,
+            new BsonDocument
+            {
+                ["product_id"] = productId.Value.ToString(),
+                ["market_id"] = string.Empty, // projeção preserva market da linha existente
+                ["image_keys"] = new BsonArray(draft.Images.Select(i => i.Key)),
+                ["aggregate_version"] = draft.Version,
+            }), cancellationToken: token);
+        return eventId.ToString();
+    }
+
     // ---- documentos ----
     public sealed class ProductDoc
     {
@@ -266,10 +354,12 @@ public sealed class MongoCatalogStore : ICatalogStore
         public List<TitleDoc> Titles { get; set; } = [];
         public List<SkuDoc> Skus { get; set; } = [];
         public Dictionary<string, string> Attributes { get; set; } = new();
+        public List<ImageDoc> Images { get; set; } = [];
         public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
         public sealed record TitleDoc(string Locale, string Text);
         public sealed record SkuDoc(string SkuId, string Code);
+        public sealed record ImageDoc(string Key, string ContentType, long SizeBytes, DateTimeOffset UploadedAtUtc);
 
         public static ProductDoc From(ProductDraft d, string requestId, string marketId, string createdBy) => new()
         {
@@ -282,6 +372,7 @@ public sealed class MongoCatalogStore : ICatalogStore
             Titles = [.. d.Titles.Select(t => new TitleDoc(t.Locale.Value, t.Text))],
             Skus = [.. d.Skus.Select(s => new SkuDoc(s.Id.Value.ToString(), s.Code))],
             Attributes = new(d.Attributes),
+            Images = [.. d.Images.Select(i => new ImageDoc(i.Key, i.ContentType, i.SizeBytes, i.UploadedAtUtc))],
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
 
@@ -291,7 +382,8 @@ public sealed class MongoCatalogStore : ICatalogStore
             Version,
             [.. Titles.Select(t => (t.Locale, t.Text))],
             [.. Skus.Select(s => (new SkuId(Guid.Parse(s.SkuId)), s.Code))],
-            new Dictionary<string, string>(Attributes ?? new Dictionary<string, string>()));
+            new Dictionary<string, string>(Attributes ?? new Dictionary<string, string>()),
+            [.. (Images ?? []).Select(i => new ProductImage(i.Key, i.ContentType, i.SizeBytes, i.UploadedAtUtc))]);
     }
 
     public sealed class OutboxDoc

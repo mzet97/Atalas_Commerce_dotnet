@@ -134,3 +134,67 @@ public class ProductDraftTests
         Assert.Throws<ArgumentException>(() => p.Unpublish("op", "", DateTimeOffset.UtcNow));
     }
 }
+
+public class ProductImageTests
+{
+    private static ProductDraft Rascunho() => ProductDraft.Create().WithTitle("pt-BR", "Mochila");
+
+    private static string Chave(ProductDraft d, string arq = "a.jpg") => $"products/{d.Id}/{arq}";
+
+    [Fact]
+    public void Anexar_imagem_valida_registra_como_capa()
+    {
+        var d = Rascunho();
+        var img = d.AttachImage(Chave(d), "image/jpeg", 1024, DateTimeOffset.UtcNow);
+        Assert.Equal(Chave(d), img.Key);
+        Assert.Single(d.Images);
+        Assert.Same(img, d.Images[0]); // [0] = capa
+    }
+
+    [Fact]
+    public void Anexar_tipo_invalido_rejeita()
+    {
+        var d = Rascunho();
+        Assert.Throws<ArgumentException>(() => d.AttachImage(Chave(d, "a.gif"), "image/gif", 1024, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Anexar_acima_do_teto_rejeita()
+    {
+        var d = Rascunho();
+        Assert.Throws<ArgumentException>(() => d.AttachImage(Chave(d), "image/png", ProductImage.MaxSizeBytes + 1, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Anexar_chave_de_outro_produto_rejeita()
+    {
+        var d = Rascunho();
+        Assert.Throws<ArgumentException>(() => d.AttachImage("products/outro-id/a.jpg", "image/jpeg", 10, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Anexar_duplicada_rejeita()
+    {
+        var d = Rascunho();
+        d.AttachImage(Chave(d), "image/jpeg", 10, DateTimeOffset.UtcNow);
+        Assert.Throws<InvalidOperationException>(() => d.AttachImage(Chave(d), "image/jpeg", 10, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Desanexar_remove_e_reordena_capa()
+    {
+        var d = Rascunho();
+        d.AttachImage(Chave(d, "a.jpg"), "image/jpeg", 10, DateTimeOffset.UtcNow);
+        d.AttachImage(Chave(d, "b.png"), "image/png", 20, DateTimeOffset.UtcNow);
+        d.DetachImage(Chave(d, "a.jpg"));
+        Assert.Single(d.Images);
+        Assert.EndsWith("b.png", d.Images[0].Key); // nova capa
+    }
+
+    [Fact]
+    public void Desanexar_inexistente_rejeita()
+    {
+        var d = Rascunho();
+        Assert.Throws<InvalidOperationException>(() => d.DetachImage(Chave(d, "x.jpg")));
+    }
+}

@@ -49,12 +49,17 @@ public sealed class CatalogProjector(
                 var skus = evt.Payload.TryGetProperty("sku_codes", out var skusEl) && skusEl.ValueKind == System.Text.Json.JsonValueKind.Array
                     ? skusEl.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
                     : [];
+                // chaves S3 do evento → colunas de capa/galeria (URLs compostas no gateway)
+                var imgKeys = evt.Payload.TryGetProperty("image_keys", out var imgEl) && imgEl.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? imgEl.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
+                    : [];
                 // upsert condicional por source_version: evento antigo nunca sobrescreve novo
                 await using var upsert = new NpgsqlCommand($"""
-                    INSERT INTO {productsTable}(product_id, title, market_id, status, source_version, projected_at, skus)
-                    VALUES (@id, @title, @market, 'Published', @ver, now(), @skus)
+                    INSERT INTO {productsTable}(product_id, title, market_id, status, source_version, projected_at, skus, cover_url, image_urls)
+                    VALUES (@id, @title, @market, 'Published', @ver, now(), @skus, @cover, @urls)
                     ON CONFLICT (product_id) DO UPDATE SET
-                        title = EXCLUDED.title, skus = EXCLUDED.skus, source_version = EXCLUDED.source_version, projected_at = now()
+                        title = EXCLUDED.title, skus = EXCLUDED.skus, source_version = EXCLUDED.source_version, projected_at = now(),
+                        cover_url = EXCLUDED.cover_url, image_urls = EXCLUDED.image_urls
                     WHERE {productsTable}.source_version < @ver
                     """, conn, tx);
                 upsert.Parameters.AddWithValue("id", Guid.Parse(productId!));
@@ -64,7 +69,28 @@ public sealed class CatalogProjector(
                 upsert.Parameters.AddWithValue("market", marketId ?? "");
                 upsert.Parameters.AddWithValue("ver", evt.AggregateVersion);
                 upsert.Parameters.AddWithValue("skus", skus);
+                upsert.Parameters.AddWithValue("cover", imgKeys.Length > 0 ? imgKeys[0] : (object)DBNull.Value);
+                upsert.Parameters.AddWithValue("urls", imgKeys);
                 await upsert.ExecuteNonQueryAsync(ct);
+                applied++;
+            }
+
+            if (evt.EventType == "Product.ImagesUpdatedV1")
+            {
+                // Só capa/galeria (stale guard por version); título/market/skus preservados.
+                var unpubId = evt.Payload.GetProperty("product_id").GetString();
+                var keys = evt.Payload.TryGetProperty("image_keys", out var keysEl) && keysEl.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? keysEl.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray()
+                    : [];
+                await using var patch = new NpgsqlCommand($"""
+                    UPDATE {productsTable} SET cover_url = @cover, image_urls = @urls, projected_at = now()
+                    WHERE product_id = @id AND source_version <= @ver
+                    """, conn, tx);
+                patch.Parameters.AddWithValue("id", Guid.Parse(unpubId!));
+                patch.Parameters.AddWithValue("cover", keys.Length > 0 ? keys[0] : (object)DBNull.Value);
+                patch.Parameters.AddWithValue("urls", keys);
+                patch.Parameters.AddWithValue("ver", evt.AggregateVersion);
+                await patch.ExecuteNonQueryAsync(ct);
                 applied++;
             }
 

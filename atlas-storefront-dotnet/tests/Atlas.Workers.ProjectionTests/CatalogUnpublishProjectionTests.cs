@@ -25,7 +25,8 @@ public sealed class CatalogUnpublishProjectionTests : IAsyncLifetime
             CREATE TABLE {_productsTable}(
                 product_id uuid PRIMARY KEY, title text, market_id text,
                 status text, source_version bigint, projected_at timestamptz,
-                skus text[] DEFAULT ARRAY[]::text[]);
+                skus text[] DEFAULT ARRAY[]::text[],
+                cover_url text, image_urls text[] DEFAULT ARRAY[]::text[]);
             CREATE TABLE {_processedTable}(
                 consumer_id text, event_id uuid, applied_at timestamptz DEFAULT now(),
                 PRIMARY KEY(consumer_id, event_id));
@@ -85,5 +86,88 @@ public sealed class CatalogUnpublishProjectionTests : IAsyncLifetime
             $$"""{"product_id":"{{productId}}","market_id":"BR","actor_sub":"op","reason":"tardio"}""");
         await projector.ApplyBatchAsync([stale], CancellationToken.None);
         Assert.Equal(1, await CountAsync(productId));
+    }
+}
+
+/// <summary>Imagens na vitrine: Published carrega capa/galeria; ImagesUpdated troca sem republicar.</summary>
+public sealed class CatalogImagesProjectionTests : IAsyncLifetime
+{
+    private const string PgConn = "Host=127.0.0.1;Username=atlas;Password=atlas_dev_only;Database=atlas_read";
+
+    private readonly string _productsTable = $"catalog_product_search_it_{Guid.NewGuid():N}";
+    private readonly string _processedTable = $"processed_events_it_{Guid.NewGuid():N}";
+
+    public async Task InitializeAsync()
+    {
+        await using var conn = new NpgsqlConnection(PgConn);
+        await conn.OpenAsync();
+        await new NpgsqlCommand($"""
+            CREATE TABLE {_productsTable}(
+                product_id uuid PRIMARY KEY, title text, market_id text,
+                status text, source_version bigint, projected_at timestamptz,
+                skus text[] DEFAULT ARRAY[]::text[],
+                cover_url text, image_urls text[] DEFAULT ARRAY[]::text[]);
+            CREATE TABLE {_processedTable}(
+                consumer_id text, event_id uuid, applied_at timestamptz DEFAULT now(),
+                PRIMARY KEY(consumer_id, event_id));
+            """, conn).ExecuteNonQueryAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await using var conn = new NpgsqlConnection(PgConn);
+        await conn.OpenAsync();
+        await new NpgsqlCommand($"DROP TABLE IF EXISTS {_productsTable}; DROP TABLE IF EXISTS {_processedTable};", conn).ExecuteNonQueryAsync();
+    }
+
+    private static DomainEventEnvelope Env(string type, Guid id, long version, string payloadJson) =>
+        new(Guid.NewGuid(), type, id.ToString(), version, "corr-it",
+            System.Text.Json.JsonDocument.Parse(payloadJson).RootElement.Clone());
+
+    private async Task<(string? Cover, string[] Urls)> ReadAsync(Guid productId)
+    {
+        await using var conn = new NpgsqlConnection(PgConn);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand($"SELECT cover_url, image_urls FROM {_productsTable} WHERE product_id = @id", conn);
+        cmd.Parameters.AddWithValue("id", productId);
+        await using var r = await cmd.ExecuteReaderAsync();
+        await r.ReadAsync();
+        return (r.IsDBNull(0) ? null : r.GetString(0), r.IsDBNull(1) ? [] : r.GetFieldValue<string[]>(1));
+    }
+
+    [Fact]
+    public async Task Published_com_imagens_preenche_capa_e_galeria()
+    {
+        var productId = Guid.NewGuid();
+        var projector = new CatalogProjector(PgConn, "catalog-search-it", _productsTable, _processedTable);
+        var published = Env("Product.PublishedV1", productId, 3,
+            $$"""{"product_id":"{{productId}}","market_id":"BR","title":"Mochila IT","sku_codes":[],"image_keys":["products/xxx/a.jpg","products/xxx/b.png"]}""");
+        Assert.Equal(1, await projector.ApplyBatchAsync([published], CancellationToken.None));
+        var (cover, urls) = await ReadAsync(productId);
+        Assert.Equal("products/xxx/a.jpg", cover);
+        Assert.Equal(["products/xxx/a.jpg", "products/xxx/b.png"], urls);
+    }
+
+    [Fact]
+    public async Task ImagesUpdated_troca_capa_sem_republicar_e_respeita_stale_guard()
+    {
+        var productId = Guid.NewGuid();
+        var projector = new CatalogProjector(PgConn, "catalog-search-it", _productsTable, _processedTable);
+        var published = Env("Product.PublishedV1", productId, 3,
+            $$"""{"product_id":"{{productId}}","market_id":"BR","title":"Mochila IT","sku_codes":[],"image_keys":["products/xxx/a.jpg"]}""");
+        await projector.ApplyBatchAsync([published], CancellationToken.None);
+
+        var updated = Env("Product.ImagesUpdatedV1", productId, 4,
+            $$"""{"product_id":"{{productId}}","image_keys":["products/xxx/b.png"]}""");
+        Assert.Equal(1, await projector.ApplyBatchAsync([updated], CancellationToken.None));
+        var (cover, urls) = await ReadAsync(productId);
+        Assert.Equal("products/xxx/b.png", cover);
+        Assert.Equal(["products/xxx/b.png"], urls);
+
+        var stale = Env("Product.ImagesUpdatedV1", productId, 2,
+            $$"""{"product_id":"{{productId}}","image_keys":["products/xxx/velha.jpg"]}""");
+        await projector.ApplyBatchAsync([stale], CancellationToken.None);
+        (cover, _) = await ReadAsync(productId);
+        Assert.Equal("products/xxx/b.png", cover); // defasado não retroage
     }
 }

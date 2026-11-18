@@ -16,6 +16,13 @@ using DeleteDraftRequest = Atlas.Contracts.Catalog.V1.DeleteDraftRequest;
 using DeleteDraftResponse = Atlas.Contracts.Catalog.V1.DeleteDraftResponse;
 using UnpublishProductRequest = Atlas.Contracts.Catalog.V1.UnpublishProductRequest;
 using UnpublishProductResponse = Atlas.Contracts.Catalog.V1.UnpublishProductResponse;
+using RequestImageUploadRequest = Atlas.Contracts.Catalog.V1.RequestImageUploadRequest;
+using RequestImageUploadResponse = Atlas.Contracts.Catalog.V1.RequestImageUploadResponse;
+using AttachImageRequest = Atlas.Contracts.Catalog.V1.AttachImageRequest;
+using AttachImageResponse = Atlas.Contracts.Catalog.V1.AttachImageResponse;
+using DetachImageRequest = Atlas.Contracts.Catalog.V1.DetachImageRequest;
+using DetachImageResponse = Atlas.Contracts.Catalog.V1.DetachImageResponse;
+using ImageView = Atlas.Contracts.Catalog.V1.ImageView;
 using PublishProductRequest = Atlas.Contracts.Catalog.V1.PublishProductRequest;
 using PublishProductResponse = Atlas.Contracts.Catalog.V1.PublishProductResponse;
 using GetProductRequest = Atlas.Contracts.Catalog.V1.GetProductRequest;
@@ -36,6 +43,8 @@ public sealed class CatalogOwnerGrpcService(
     UpsertDraftHandler upsertHandler,
     UpdateDraftHandler updateHandler,
     PublishProductHandler publishHandler,
+    RequestImageUploadHandler uploadHandler,
+    AttachImageHandler attachHandler,
     ICatalogStore store) : CatalogOwnerService.CatalogOwnerServiceBase
 {
     public override async Task<UpsertDraftResponse> UpsertDraft(UpsertDraftRequest request, ServerCallContext context)
@@ -113,6 +122,7 @@ public sealed class CatalogOwnerGrpcService(
         };
         response.Titles.AddRange(draft.Titles.Select(t => new ProtoLocalizedText { Locale = t.Locale.Value, Text = t.Text }));
         response.Skus.AddRange(draft.Skus.Select(s => new SkuView { SkuId = s.Id.Value.ToString(), SkuCode = s.Code }));
+        response.Images.AddRange(draft.Images.Select(i => new ImageView { Key = i.Key, ContentType = i.ContentType, SizeBytes = i.SizeBytes }));
         return response;
     }
 
@@ -138,9 +148,51 @@ public sealed class CatalogOwnerGrpcService(
                 CreatedBy = i.CreatedBy,
             };
             view.Titles.AddRange(i.Titles.Select(t => new ProtoLocalizedText { Locale = t.Locale, Text = t.Title }));
+            view.Images.AddRange((i.Images ?? []).Select(m => new ImageView { Key = m.Key, ContentType = m.ContentType, SizeBytes = m.SizeBytes }));
             return view;
         }));
         return response;
+    }
+
+    public override async Task<RequestImageUploadResponse> RequestImageUpload(RequestImageUploadRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProductId) || string.IsNullOrWhiteSpace(request.ActorSub))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "product_id e actor_sub obrigatórios"));
+        if (string.IsNullOrWhiteSpace(request.ContentType) || request.ContentLength <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "content_type e content_length obrigatórios"));
+        var (ok, url, key, expires, reason) = await uploadHandler.HandleAsync(
+            ParseId(request.ProductId), request.ActorSub, request.ContentType, request.ContentLength, context.CancellationToken);
+        return ok
+            ? new RequestImageUploadResponse { Accepted = true, UploadUrl = url!, ObjectKey = key!, ExpiresAtUtc = expires!.Value.ToString("o") }
+            : new RequestImageUploadResponse { Accepted = false, Reason = reason ?? "upload rejeitado" };
+    }
+
+    public override async Task<AttachImageResponse> AttachImage(AttachImageRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProductId) || string.IsNullOrWhiteSpace(request.ObjectKey))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "product_id e object_key obrigatórios"));
+        var outcome = await attachHandler.HandleAsync(
+            ParseId(request.ProductId), request.ExpectedVersion, request.ActorSub,
+            request.ObjectKey, request.RequestId, context.CancellationToken);
+        return outcome.Accepted
+            ? new AttachImageResponse { Accepted = true, AggregateVersion = outcome.Version }
+            : outcome.Reason == "produto inexistente"
+                ? throw new RpcException(new Status(StatusCode.NotFound, outcome.Reason))
+                : new AttachImageResponse { Accepted = false, AggregateVersion = outcome.Version, Reason = outcome.Reason ?? "" };
+    }
+
+    public override async Task<DetachImageResponse> DetachImage(DetachImageRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProductId) || string.IsNullOrWhiteSpace(request.ObjectKey))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "product_id e object_key obrigatórios"));
+        var outcome = await store.DetachImageAsync(
+            ParseId(request.ProductId), request.ExpectedVersion, request.ObjectKey,
+            request.ActorSub, request.RequestId, context.CancellationToken);
+        return outcome.Accepted
+            ? new DetachImageResponse { Accepted = true, AggregateVersion = outcome.Version }
+            : outcome.Reason == "produto inexistente"
+                ? throw new RpcException(new Status(StatusCode.NotFound, outcome.Reason))
+                : new DetachImageResponse { Accepted = false, AggregateVersion = outcome.Version, Reason = outcome.Reason ?? "" };
     }
 
     public override async Task<UpdateDraftResponse> UpdateDraft(UpdateDraftRequest request, ServerCallContext context)

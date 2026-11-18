@@ -16,6 +16,10 @@ builder.Services.AddHealthChecks();
 var pgConn = builder.Configuration["Pg:ConnectionString"] ?? "Host=127.0.0.1;Username=atlas;Password=atlas_dev_only;Database=atlas_read";
 var checkoutUrl = builder.Configuration["Checkout:Url"] ?? "http://127.0.0.1:5297";
 var catalogUrl = builder.Configuration["Catalog:Url"] ?? "http://127.0.0.1:5299";
+// Base pública das imagens (bucket atlas-catalog, leitura pública em products/*).
+// Chaves S3 vivem nas views; a URL é composta aqui (host muda sem replay).
+var mediaBase = (builder.Configuration["Media:PublicBaseUrl"] ?? "").TrimEnd('/');
+string? MediaUrl(string? key) => string.IsNullOrWhiteSpace(key) || mediaBase == "" ? null : $"{mediaBase}/{key}";
 var inventoryUrl = builder.Configuration["Inventory:Url"] ?? "http://127.0.0.1:5291";
 
 // borda HTTP dos services (registros ANTES do Build — coleção fica read-only depois)
@@ -112,7 +116,7 @@ app.MapGet("/api/catalog/products", async (CancellationToken ct) =>
     await conn.OpenAsync(ct);
     var products = new List<object>();
     await using (var cmd = new NpgsqlCommand(
-        "SELECT product_id, title, market_id, status, source_version FROM catalog_product_search ORDER BY projected_at DESC LIMIT 50", conn))
+        "SELECT product_id, title, market_id, status, source_version, cover_url FROM catalog_product_search ORDER BY projected_at DESC LIMIT 50", conn))
     await using (var reader = await cmd.ExecuteReaderAsync(ct))
     {
         while (await reader.ReadAsync(ct))
@@ -124,6 +128,7 @@ app.MapGet("/api/catalog/products", async (CancellationToken ct) =>
                 marketId = reader.GetString(2),
                 status = reader.GetString(3),
                 sourceVersion = reader.GetInt64(4),
+                coverUrl = MediaUrl(reader.IsDBNull(5) ? null : reader.GetString(5)),
             });
         }
     }
@@ -162,7 +167,7 @@ app.MapGet("/api/catalog/search", async (string? q, string? market, string? sku,
     }
     var items = new List<object>();
     await using (var cmd = new NpgsqlCommand(
-        $"SELECT product_id, title, market_id, status, source_version FROM catalog_product_search {where} ORDER BY projected_at DESC LIMIT @limit OFFSET @offset", conn))
+        $"SELECT product_id, title, market_id, status, source_version, cover_url FROM catalog_product_search {where} ORDER BY projected_at DESC LIMIT @limit OFFSET @offset", conn))
     {
         cmd.Parameters.AddWithValue("q", (object?)q ?? DBNull.Value);
         cmd.Parameters.AddWithValue("market", (object?)market ?? DBNull.Value);
@@ -171,7 +176,7 @@ app.MapGet("/api/catalog/search", async (string? q, string? market, string? sku,
         cmd.Parameters.AddWithValue("offset", (pageEff - 1) * sizeEff);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
-            items.Add(new { productId = r.GetGuid(0), title = r.GetString(1), marketId = r.GetString(2), status = r.GetString(3), sourceVersion = r.GetInt64(4) });
+            items.Add(new { productId = r.GetGuid(0), title = r.GetString(1), marketId = r.GetString(2), status = r.GetString(3), sourceVersion = r.GetInt64(4), coverUrl = MediaUrl(r.IsDBNull(5) ? null : r.GetString(5)) });
     }
     var payload = System.Text.Json.JsonSerializer.Serialize(
         new { items, total, page = pageEff, pageSize = sizeEff, facets });
@@ -187,15 +192,18 @@ app.MapGet("/api/catalog/products/{productId:guid}", async (Guid productId, Canc
     string title, marketId, status;
     long version;
     string[] skus;
+    string[] imageKeys;
     await using (var cmd = new NpgsqlCommand(
-        "SELECT title, market_id, status, source_version, skus FROM catalog_product_search WHERE product_id = @id", conn))
+        "SELECT title, market_id, status, source_version, skus, image_urls FROM catalog_product_search WHERE product_id = @id", conn))
     {
         cmd.Parameters.AddWithValue("id", productId);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         if (!await r.ReadAsync(ct)) return Results.NotFound();
         title = r.GetString(0); marketId = r.GetString(1); status = r.GetString(2); version = r.GetInt64(3);
         skus = r.IsDBNull(4) ? [] : r.GetFieldValue<string[]>(4);
+        imageKeys = r.IsDBNull(5) ? [] : r.GetFieldValue<string[]>(5);
     }
+    var images = imageKeys.Select(k => MediaUrl(k)).Where(u => u is not null).ToArray();
     var offers = new List<object>();
     await using (var ocmd = new NpgsqlCommand(
         "SELECT sku_id, market_id, currency, price_minor, status FROM available_offer_view " +
@@ -224,7 +232,7 @@ app.MapGet("/api/catalog/products/{productId:guid}", async (Guid productId, Canc
             availability.Add(new { skuId = ir.GetString(0), availableHint = ir.IsDBNull(1) ? 0 : ir.GetInt64(1) });
     }
     // INV-CQRS-001: hint NUNCA confirma saldo — o checkout reserva no owner
-    return Results.Ok(new { productId, title, marketId, status, sourceVersion = version, skus, offers, availabilityHint = availability });
+    return Results.Ok(new { productId, title, marketId, status, sourceVersion = version, skus, images, offers, availabilityHint = availability });
 });
 
 // ---- M5: forwarder explícito /api/checkout/** → Checkout.Api (borda única da vitrine) ----

@@ -24,7 +24,24 @@ builder.Services.AddSingleton<Atlas.Catalog.Application.ICatalogStore>(sp => sp.
 builder.Services.AddSingleton<UpsertDraftHandler>();
 builder.Services.AddSingleton<UpdateDraftHandler>();
 builder.Services.AddSingleton<PublishProductHandler>();
+builder.Services.AddSingleton<RequestImageUploadHandler>();
+builder.Services.AddSingleton<AttachImageHandler>();
 builder.Services.AddGrpc();
+
+// Mídia (MinIO/S3): bucket atlas-catalog + leitura pública em products/*.
+// Sem MinIO (dev sem infra), o serviço sobe e imagens degradam com erro explícito.
+var mediaOptions = new Atlas.Catalog.Infrastructure.MediaOptions
+{
+    ServiceUrl = builder.Configuration["Media:S3:ServiceUrl"] ?? "http://127.0.0.1:9000",
+    PresignServiceUrl = builder.Configuration["Media:S3:PresignServiceUrl"] ?? "",
+    AccessKey = builder.Configuration["Media:S3:AccessKey"] ?? "",
+    SecretKey = builder.Configuration["Media:S3:SecretKey"] ?? "",
+    Bucket = builder.Configuration["Media:Bucket"] ?? "atlas-catalog",
+    PublicBaseUrl = builder.Configuration["Media:PublicBaseUrl"] ?? "",
+};
+builder.Services.AddSingleton(mediaOptions);
+builder.Services.AddSingleton<Atlas.Catalog.Application.IMediaStorage>(
+    new Atlas.Catalog.Infrastructure.ProductMediaService(mediaOptions));
 
 // gRPC local exige h2c (HTTP/2 cleartext): 5290 para o owner gRPC; 5299 HTTP/1.1 para o resto.
 // (smoke M2: Kestrel cleartext default é HTTP/1.1 e o channel gRPC pendura; Listen manual vence --urls)
@@ -48,6 +65,21 @@ app.MapGet("/", () => Results.Ok(new
 
 // Health detalhado para smoke local/CI (TEST-001-002).
 app.MapHealthChecks("/health");
+
+// Bucket atlas-catalog + política pública (idempotente). MinIO fora = imagens
+// degradam com erro explícito; catálogo segue operando.
+var logMediaReady = LoggerMessage.Define<string>(LogLevel.Information, new EventId(1, "MediaReady"), "mídia pronta (bucket {Bucket})");
+var logMediaDown = LoggerMessage.Define<string>(LogLevel.Warning, new EventId(2, "MediaDown"), "mídia indisponível no arranque ({Reason})");
+try
+{
+    using var ensureCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+    await app.Services.GetRequiredService<IMediaStorage>().EnsureBucketAsync(ensureCts.Token);
+    logMediaReady(app.Logger, mediaOptions.Bucket, null);
+}
+catch (Exception ex)
+{
+    logMediaDown(app.Logger, ex.Message, ex);
+}
 
 // Endpoint de demonstração do domínio mínimo (estrutura presente; lógica real chega na SPEC-002).
 app.MapGet("/catalog/drafts/{id:guid}", (Guid id) =>

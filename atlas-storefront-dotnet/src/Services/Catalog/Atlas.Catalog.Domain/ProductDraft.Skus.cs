@@ -66,7 +66,8 @@ public sealed partial class ProductDraft
         long version,
         IReadOnlyList<(string Locale, string Text)> titles,
         IReadOnlyList<(SkuId SkuId, string Code)> skus,
-        IReadOnlyDictionary<string, string> attributes)
+        IReadOnlyDictionary<string, string> attributes,
+        IReadOnlyList<ProductImage>? images = null)
     {
         var draft = new ProductDraft(id);
         draft.Status = status;
@@ -80,6 +81,8 @@ public sealed partial class ProductDraft
             draft._skus.Add(new SkuVariant(skuId, code, new Dictionary<string, string>()));
         foreach (var kv in attributes)
             draft._attributes[kv.Key] = kv.Value;
+        if (images is not null)
+            draft._images.AddRange(images);
         return draft;
     }
 }

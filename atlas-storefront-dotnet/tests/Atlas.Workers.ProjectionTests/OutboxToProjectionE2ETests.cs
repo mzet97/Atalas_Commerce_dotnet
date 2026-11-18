@@ -57,7 +57,8 @@ public sealed class OutboxToProjectionE2ETests : IAsyncLifetime
             CREATE TABLE {_productsTable}(
                 product_id uuid PRIMARY KEY, title text, market_id text,
                 status text, source_version bigint, projected_at timestamptz,
-                skus text[] DEFAULT ARRAY[]::text[]);
+                skus text[] DEFAULT ARRAY[]::text[],
+                cover_url text, image_urls text[] DEFAULT ARRAY[]::text[]);
             CREATE TABLE {_processedTable}(
                 consumer_id text, event_id uuid, applied_at timestamptz DEFAULT now(),
                 PRIMARY KEY(consumer_id, event_id));
