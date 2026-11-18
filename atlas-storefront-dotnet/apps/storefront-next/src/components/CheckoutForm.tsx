@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { clearCart, useCart } from "@atlas/lib/cart";
+import { authHeader, readSession } from "@atlas/lib/auth";
 import { formatMoney } from "@atlas/lib/i18n";
 import { submitCheckout, type CheckoutOutcome } from "@atlas/lib/storefront";
 
@@ -19,8 +20,9 @@ export function CheckoutForm({
   const [quote, setQuote] = useState<StoredQuote | null>(null);
   const [outcome, setOutcome] = useState<CheckoutOutcome | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // fatia 9: comprador logado usa o sub autenticado; anônimo segue "guest" (M3 compat)
   const [form, setForm] = useState({
-    customerId: "guest",
+    customerId: readSession()?.sub ?? "guest",
     country: "BR",
     postalCode: "",
     addressLine1: "",
@@ -79,9 +81,11 @@ export function CheckoutForm({
       onSubmit={async (e) => {
         e.preventDefault();
         setSubmitting(true);
+        const buyer = readSession();
         const result = await submitCheckout({
           idempotencyKey: `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          customerId: form.customerId,
+          customerId: buyer?.sub ?? form.customerId,
+          token: buyer ? authHeader().Authorization?.replace("Bearer ", "") : undefined,
           quoteId: quote.quoteId,
           lines: lines.map((l) => ({ skuId: l.skuId, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor })),
           totalMinor: quote.totalMinor,

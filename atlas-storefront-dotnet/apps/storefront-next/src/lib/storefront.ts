@@ -106,11 +106,14 @@ export async function submitCheckout(input: {
   totalMinor: number;
   currency: string;
   shipping: { country: string; postalCode: string; line1: string; city: string };
+  token?: string;
 }): Promise<CheckoutOutcome> {
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (input.token) headers.Authorization = `Bearer ${input.token}`;
     const res = await fetch(`${bffUrl()}/api/checkout/checkout`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(input),
       cache: "no-store",
     });

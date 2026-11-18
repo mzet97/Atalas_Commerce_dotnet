@@ -1,3 +1,8 @@
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
@@ -22,8 +27,79 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
     StackExchange.Redis.ConnectionMultiplexer.Connect(
         builder.Configuration["Redis:ConnectionString"] ?? "127.0.0.1:6379"));
 
+// ---- fatia 9 (login buyer): valida JWT e propaga subject autenticado ----
+// Auth:Mode=Keycloak (produção: Auth:Authority=Keycloak, ex. http://keycloak:8080/realms/atlas)
+// Auth:Mode=TestHmac (SOMENTE testes: Auth:TestSigningKey HMAC de 32+ bytes; nunca nos charts prod)
+var authMode = builder.Configuration["Auth:Mode"] ?? "Keycloak";
+var authority = builder.Configuration["Auth:Authority"] ?? "http://127.0.0.1:8080/realms/atlas";
+var testKey = builder.Configuration["Auth:TestSigningKey"];
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+{
+    o.RequireHttpsMetadata = false;
+    o.MapInboundClaims = false;
+    if (string.Equals(authMode, "TestHmac", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(testKey))
+    {
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(testKey)),
+        };
+    }
+    else
+    {
+        o.Authority = authority;
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateAudience = false,
+            NameClaimType = "preferred_username",
+        };
+    }
+});
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 app.MapHealthChecks("/health");
+app.UseAuthentication();
+app.UseAuthorization();
+
+// subject autenticado (INV-SEC-001): extrai de token Bearer válido; null = anônimo legítimo
+static async Task<string?> AuthenticatedSubjectAsync(HttpContext http)
+{
+    var auth = http.Request.Headers.Authorization.ToString();
+    if (string.IsNullOrWhiteSpace(auth) || !auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        return null;
+    var result = await http.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
+    return result.Succeeded
+        ? result.Principal?.FindFirst("sub")?.Value ?? result.Principal?.Identity?.Name
+        : throw new UnauthorizedAccessException("token inválido ou expirado");
+}
+
+app.MapGet("/api/me", (ClaimsPrincipal user) =>
+{
+    var sub = user.FindFirst("sub")?.Value ?? user.Identity?.Name ?? "?";
+    var roles = user.FindAll("realm_access.roles").Select(r => r.Value).ToArray();
+    string[] rawRoles = [];
+    var realmAccess = user.FindFirst("realm_access")?.Value;
+    if (!string.IsNullOrEmpty(realmAccess))
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(realmAccess);
+            if (doc.RootElement.TryGetProperty("roles", out var r))
+                rawRoles = r.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s != "").ToArray();
+        }
+        catch (System.Text.Json.JsonException) { }
+    }
+    return Results.Ok(new
+    {
+        sub,
+        username = user.FindFirst("preferred_username")?.Value ?? sub,
+        roles = roles.Concat(rawRoles).Distinct().ToArray(),
+    });
+}).RequireAuthorization();
 
 // ---- M2 (compat): lista simples de produtos publicados ----
 app.MapGet("/api/catalog/products", async (CancellationToken ct) =>
@@ -148,14 +224,31 @@ app.MapGet("/api/catalog/products/{productId:guid}", async (Guid productId, Canc
 });
 
 // ---- M5: forwarder explícito /api/checkout/** → Checkout.Api (borda única da vitrine) ----
+// fatia 9: com Bearer válido, propaga X-Authenticated-Subject (INV-SEC-001: subject
+// autenticado, nunca auto-assertado); sem token mantém passthrough anônimo (M3 compat);
+// token inválido → 401 sem tocar o owner.
 app.Map("/api/checkout/{**catch-all}", async (HttpContext http, IHttpClientFactory factory) =>
 {
+    string? subject;
+    try
+    {
+        subject = await AuthenticatedSubjectAsync(http);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        http.Response.StatusCode = 401;
+        http.Response.ContentType = "application/json";
+        await http.Response.WriteAsync("{\"error\":\"token inválido ou expirado\"}");
+        return;
+    }
     // buffer explícito: payloads pequenos (dev); a borda lê o corpo ANTES do forward
     var body = http.Request.ContentLength is > 0
         ? await new StreamReader(http.Request.Body).ReadToEndAsync()
         : null;
     using var upstream = new HttpRequestMessage(new HttpMethod(http.Request.Method),
         checkoutUrl + http.Request.Path.Value!.Replace("/api/checkout", "") + http.Request.QueryString);
+    if (subject is not null)
+        upstream.Headers.Add("X-Authenticated-Subject", subject);
     if (body is not null)
         upstream.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
     using var downstream = await factory.CreateClient("checkout").SendAsync(upstream);

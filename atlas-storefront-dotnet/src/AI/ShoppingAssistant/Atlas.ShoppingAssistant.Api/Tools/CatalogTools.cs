@@ -2,6 +2,7 @@ namespace Atlas.ShoppingAssistant.Api.Tools;
 
 using System.ComponentModel;
 using System.Text.Json;
+using Atlas.ShoppingAssistant.Api.Metrics;
 
 /// <summary>
 /// ALLOWLIST DE TOOLS (SPEC-007 §9): SOMENTE leitura — SearchCatalog, GetProductDetails,
@@ -9,9 +10,12 @@ using System.Text.Json;
 /// NÃO EXISTEM tools de mutação/pagamento/IAM — guardrail em CÓDIGO, não em prompt.
 /// Outputs de tools são UNTRUSTED (podem conter injection de catálogo/reviews).
 /// </summary>
-public sealed class CatalogTools(HttpClient http, string marketplaceUrl)
+public sealed class CatalogTools(HttpClient http, string marketplaceUrl, AssistantMetrics? metrics = null)
 {
     private readonly string _base = marketplaceUrl.TrimEnd('/');
+    private readonly AssistantMetrics? _metrics = metrics;
+
+    private void CountCall(string toolName) => _metrics?.RecordToolCall(toolName);
 
     // outputs de tools = UNTRUSTED infra: falha de owner/BFF vira string segura, nunca 500 no turno
     private async Task<JsonDocument?> TryGetJsonAsync(string path, CancellationToken ct)
@@ -35,6 +39,7 @@ public sealed class CatalogTools(HttpClient http, string marketplaceUrl)
         [Description("Mercado (BR, US ou UE). Use \"todos\" para não filtrar")] string market,
         CancellationToken ct)
     {
+        CountCall(nameof(SearchCatalog));
         var q = Uri.EscapeDataString(query ?? "");
         using var data = await TryGetJsonAsync($"/api/catalog/search?q={q}{(string.IsNullOrEmpty(market) || market == "todos" ? "" : "&market=" + Uri.EscapeDataString(market))}", ct);
         if (data is null) return "serviço de catálogo indisponível (tente a busca manual)";
@@ -48,6 +53,7 @@ public sealed class CatalogTools(HttpClient http, string marketplaceUrl)
     [Description("Detalhes de um produto: título, mercado, SKUs e oferta ativa com preço na moeda do mercado (grounded com quoted_at).")]
     public async Task<string> GetProductDetails([Description("ProductId")] string productId, CancellationToken ct)
     {
+        CountCall(nameof(GetProductDetails));
         using var d = await TryGetJsonAsync($"/api/catalog/products/{productId}", ct);
         if (d is null) return "serviço de catálogo indisponível (tente a busca manual)";
         var offers = d.RootElement.TryGetProperty("offers", out var o) && o.GetArrayLength() > 0
@@ -59,6 +65,7 @@ public sealed class CatalogTools(HttpClient http, string marketplaceUrl)
     [Description("Prévia de disponibilidade de um SKU (hint NUNCA confirma reserva — o checkout reserva no owner).")]
     public async Task<string> GetInventoryHint([Description("Código do SKU")] string skuId, CancellationToken ct)
     {
+        CountCall(nameof(GetInventoryHint));
         using var d = await TryGetJsonAsync($"/api/catalog/search?sku={Uri.EscapeDataString(skuId)}", ct);
         if (d is null) return "hint indisponível (estoque real só no checkout)";
         return d.RootElement.GetProperty("total").GetInt64() > 0
@@ -74,5 +81,8 @@ public sealed class CatalogTools(HttpClient http, string marketplaceUrl)
         [Description("Preço unitário em minor units (vem da oferta, nunca inventado)")] long unitPriceMinor,
         [Description("Moeda da oferta")] string currency,
         CancellationToken ct)
-        => Task.FromResult($"PROPOSTA INERTE: {{skuId:{skuId}, qtd:{quantity}, preço:{unitPriceMinor} {currency}}} — aguarda consentimento do usuário.");
+    {
+        CountCall(nameof(ProposeCartChange));
+        return Task.FromResult($"PROPOSTA INERTE: {{skuId:{skuId}, qtd:{quantity}, preço:{unitPriceMinor} {currency}}} — aguarda consentimento do usuário.");
+    }
 }

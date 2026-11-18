@@ -51,6 +51,9 @@ export default async function LangLayout({
               ))}
             </ul>
             <CartWidget locale={locale} label={t("nav.cart")} />
+            <Link href={`/${locale}/login`} data-testid="nav-login">
+              {t("nav.login")}
+            </Link>
           </nav>
         </header>
         <main id="main">{children}</main>
