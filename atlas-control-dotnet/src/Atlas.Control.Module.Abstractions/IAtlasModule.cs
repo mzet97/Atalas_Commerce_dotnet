@@ -19,4 +19,6 @@ public interface IModuleEndpoints
     void MapPost(string route, string policy, Delegate handler);
     /// <summary>Rota DELETE protegida por policy (SPEC-004: revogação de grants).</summary>
     void MapDelete(string route, string policy, Delegate handler);
+    /// <summary>Rota PUT protegida por policy (CRUD operacional com CAS).</summary>
+    void MapPut(string route, string policy, Delegate handler);
 }

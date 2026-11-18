@@ -174,9 +174,9 @@ public sealed class InventoryOperationsModule(
                 : Results.Json(new { state = "Failed", error, audited = true }, statusCode: 502);
         });
 
-        endpoints.MapGet("/modules/approvals", async (string? state, int? page, int? pageSize, CancellationToken ct) =>
+        endpoints.MapGet("/modules/approvals", async (string? state, string? subject, int? page, int? pageSize, CancellationToken ct) =>
         {
-            var (items, total) = await approvals.ListApprovalsAsync(state, page ?? 1, pageSize ?? 50, ct);
+            var (items, total) = await approvals.ListApprovalsAsync(state, page ?? 1, pageSize ?? 50, ct, subject);
             return Results.Ok(new { items, total, page = page ?? 1, pageSize = Math.Clamp(pageSize ?? 50, 1, 200) });
         });
 

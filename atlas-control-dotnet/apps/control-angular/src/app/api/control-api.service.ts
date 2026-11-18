@@ -101,6 +101,48 @@ export class ControlApiService {
     return typeof n === 'number' ? (STATE_NAMES[n] ?? 'Requested') : String(n ?? 'Requested');
   }
 
+  // ---- produtos (master data do catálogo via owner) ----
+  listProducts(filter: { status?: string; market?: string; search?: string; page?: number } = {}): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    const q = new URLSearchParams({ page: String(filter.page ?? 1), pageSize: '20' });
+    if (filter.status) q.set('status', filter.status);
+    if (filter.market) q.set('market', filter.market);
+    if (filter.search) q.set('q', filter.search);
+    return this.call(`/modules/catalog/products?${q}`);
+  }
+  getProduct(id: string): Promise<Record<string, unknown>> {
+    return this.call(`/modules/catalog/products/${id}`);
+  }
+  createProduct(input: { marketId: string; titles: { locale: string; title: string }[]; skuCodes: string[] }): Promise<{ productId: string; version: number }> {
+    return this.call('/modules/catalog/products', { method: 'POST', body: JSON.stringify(input) });
+  }
+  updateProduct(id: string, input: { expectedVersion: number; titles: { locale: string; title: string }[]; attributes?: Record<string, string> }): Promise<unknown> {
+    return this.call(`/modules/catalog/products/${id}`, { method: 'PUT', body: JSON.stringify(input) });
+  }
+  deleteProduct(id: string): Promise<unknown> {
+    return this.call(`/modules/catalog/products/${id}`, { method: 'DELETE' });
+  }
+  submitProduct(id: string, expectedVersion: number): Promise<unknown> {
+    return this.call(`/modules/catalog/products/${id}/submit`, { method: 'POST', body: JSON.stringify({ expectedVersion }) });
+  }
+  requestUnpublish(productId: string, reason: string): Promise<{ approvalId: string }> {
+    return this.call('/modules/catalog/unpublish/requests', { method: 'POST', body: JSON.stringify({ productId, reason }) });
+  }
+  listCatalogApprovals(state?: string, subject?: string): Promise<Page<OperationApproval>> {
+    const q = new URLSearchParams({ page: '1', pageSize: '50' });
+    if (state) q.set('state', state);
+    if (subject) q.set('subject', subject);
+    return this.call(`/modules/approvals?${q}`).then((p) => this.mapCatalogApprovalPage(p as Page<Record<string, unknown>>));
+  }
+  decideCatalog(id: string, decision: 'APPROVED' | 'REJECTED', reason?: string): Promise<{ state: string }> {
+    return this.call(`/modules/catalog/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ decision, reason }) });
+  }
+  dispatchCatalog(id: string): Promise<{ state: string }> {
+    return this.call(`/modules/catalog/approvals/${id}/dispatch`, { method: 'POST', body: JSON.stringify({}) });
+  }
+  private mapCatalogApprovalPage(p: Page<Record<string, unknown>>): Page<OperationApproval> {
+    return { ...p, items: p.items.map((i) => this.mapApproval(i)) };
+  }
+
   // ---- auditoria (REQ-ADM-003) ----
   listAudit(action?: string, page = 1): Promise<Page<AuditEntry>> {
     const q = new URLSearchParams({ page: String(page), pageSize: '20' });

@@ -253,14 +253,16 @@ public sealed class OperationApprovalsStore
         return await Grants().Find(filter).AnyAsync(ct);
     }
 
-    /// <summary>Listagem server-side paginada (SPEC-004 req.5).</summary>
+    /// <summary>Listagem server-side paginada (SPEC-004 req.5; subject opcional p/ ficha do agregado).</summary>
     public async Task<(IReadOnlyList<OperationApproval> Items, long Total)> ListApprovalsAsync(
-        string? state, int page, int pageSize, CancellationToken ct)
+        string? state, int page, int pageSize, CancellationToken ct, string? subject = null)
     {
-        var filter = string.IsNullOrWhiteSpace(state)
-            ? Builders<OperationApprovalDoc>.Filter.Empty
-            : Builders<OperationApprovalDoc>.Filter.Eq(d => d.State,
+        var filter = Builders<OperationApprovalDoc>.Filter.Empty;
+        if (!string.IsNullOrWhiteSpace(state))
+            filter &= Builders<OperationApprovalDoc>.Filter.Eq(d => d.State,
                 Enum.Parse<OperationApprovalState>(state, true));
+        if (!string.IsNullOrWhiteSpace(subject))
+            filter &= Builders<OperationApprovalDoc>.Filter.Eq(d => d.Subject, subject);
         var total = await Approvals().CountDocumentsAsync(filter, cancellationToken: ct);
         var docs = await Approvals().Find(filter)
             .SortByDescending(d => d.CreatedAtUtc)

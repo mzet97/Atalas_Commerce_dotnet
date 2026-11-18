@@ -2,7 +2,7 @@ namespace Atlas.Control.Modules.Approvals;
 
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using Atlas.Control.Modules.Kernel;
 
 /// <summary>
 /// Agregado Approval (blueprint #02 §2; INV-ADMIN-001): request de um operador e decisão
@@ -86,33 +86,7 @@ public enum ApprovalState { Requested, Approved, Rejected, Dispatched, Executed,
 
 public sealed class SelfApprovalException(string sub) : InvalidOperationException($"four-eyes violado: {sub} não pode aprovar a própria solicitação");
 
-/// <summary>
-/// Emissor HMAC do approval_token — MESMO algoritmo validado pelo owner (Atlas.Catalog.Application
-/// ApprovalToken). Duplicado de propósito enquanto não houver pacote de contratos publicado;
-/// consolidar no release (ADR-0012). O teste de compatibilidade cruzada garante os dois lados.
-/// </summary>
-public static class ApprovalTokenIssuer
-{
-    public sealed record Payload(
-        [property: System.Text.Json.Serialization.JsonPropertyName("sub")] string Sub,
-        [property: System.Text.Json.Serialization.JsonPropertyName("product_id")] string ProductId,
-        [property: System.Text.Json.Serialization.JsonPropertyName("expected_version")] long ExpectedVersion,
-        [property: System.Text.Json.Serialization.JsonPropertyName("exp")] long ExpUnixSeconds);
-
-    public static string Issue(Payload payload, string secret)
-    {
-        var json = JsonSerializer.Serialize(payload);
-        var body = Convert.ToBase64String(Encoding.UTF8.GetBytes(json)).TrimEnd('=');
-        var sig = Convert.ToBase64String(Sign(body, secret)).TrimEnd('=');
-        return $"{body}.{sig}";
-    }
-
-    private static byte[] Sign(string body, string secret)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        return hmac.ComputeHash(Encoding.UTF8.GetBytes(body));
-    }
-}
+// ApprovalTokenIssuer vive no Kernel (compartilhado sem arestas entre módulos).
 
 /// <summary>Trilha de auditoria append-only (REQ-ADM-003): toda ação E toda negação.</summary>
 public sealed record AuditRecord(

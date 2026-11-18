@@ -11,4 +11,6 @@ internal sealed class ModuleEndpoints(IEndpointRouteBuilder routes) : IModuleEnd
         routes.MapPost(route, handler).RequireAuthorization(policy);
     public void MapDelete(string route, string policy, Delegate handler) =>
         routes.MapDelete(route, handler).RequireAuthorization(policy);
+    public void MapPut(string route, string policy, Delegate handler) =>
+        routes.MapPut(route, handler).RequireAuthorization(policy);
 }

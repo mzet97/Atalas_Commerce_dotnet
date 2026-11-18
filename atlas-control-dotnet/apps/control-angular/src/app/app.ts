@@ -10,6 +10,7 @@ import { KeycloakService } from './auth/keycloak.service';
     <span class="brand">Atlas Control</span>
     @if (kc.authenticated()) {
     <nav>
+      <a routerLink="/products">Produtos</a>
       <a routerLink="/approvals">Aprovações</a>
       <a routerLink="/approvals-new">Solicitar ajuste</a>
       <a routerLink="/publications">Publicações</a>

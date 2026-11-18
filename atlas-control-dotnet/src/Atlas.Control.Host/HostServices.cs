@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Atlas.Control.Modules.Approvals;
+using CatalogOps = Atlas.Control.Modules.CatalogOperations;
 using Atlas.Control.Modules.InventoryOperations;
 using Atlas.Control.Modules.Kernel;
 
@@ -82,6 +83,155 @@ public sealed class KeycloakRolesClaimsTransformation : Microsoft.AspNetCore.Aut
         }
         catch (JsonException) { /* token sem realm_access legível — segue sem roles */ }
         return Task.FromResult(principal);
+    }
+}
+
+/// <summary>Adapter gRPC ao Catalog owner (canal por config; erros viram resultado, nunca throw).</summary>
+public sealed class GrpcCatalogOwnerCatalog(string ownerUrl) : CatalogOps.ICatalogOwnerCatalog
+{
+    private Atlas.Contracts.Catalog.V1.CatalogOwnerService.CatalogOwnerServiceClient NewClient()
+    {
+        var channel = Grpc.Net.Client.GrpcChannel.ForAddress(ownerUrl);
+        return new Atlas.Contracts.Catalog.V1.CatalogOwnerService.CatalogOwnerServiceClient(channel);
+    }
+
+    public async Task<(IReadOnlyList<CatalogOps.CatalogProductRow> Items, long Total)> ListAsync(
+        string? status, string? market, string? search, int page, int pageSize, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().ListDraftsAsync(new Atlas.Contracts.Catalog.V1.ListDraftsRequest
+            {
+                Status = status ?? "", MarketId = market ?? "", Search = search ?? "",
+                Page = page, PageSize = pageSize,
+            }, cancellationToken: ct);
+            return ([.. res.Items.Select(i => new CatalogOps.CatalogProductRow(
+                i.ProductId, i.Status, i.AggregateVersion, i.MarketId,
+                [.. i.Titles.Select(t => new CatalogOps.CatalogTitleDto(t.Locale, t.Text))], i.SkuCount, i.CreatedBy))], res.Total);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            Console.Error.WriteLine($"[catalog-owner] lista indisponível ({ex.StatusCode})");
+            return ([], 0);
+        }
+    }
+
+    public async Task<CatalogOps.CatalogProductDetail?> GetAsync(string productId, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().GetProductAsync(
+                new Atlas.Contracts.Catalog.V1.GetProductRequest { ProductId = productId }, cancellationToken: ct);
+            return new CatalogOps.CatalogProductDetail(res.ProductId, res.Status, res.AggregateVersion,
+                [.. res.Titles.Select(t => new CatalogOps.CatalogTitleDto(t.Locale, t.Text))],
+                [.. res.Skus.Select(s => new CatalogOps.CatalogSkuDto(s.SkuId, s.SkuCode))]);
+        }
+        catch (global::Grpc.Core.RpcException ex) when (ex.StatusCode == global::Grpc.Core.StatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public async Task<(bool Accepted, string ProductId, long Version, string? Reason)> UpsertAsync(
+        string requestId, string actorSub, string marketId,
+        IReadOnlyList<CatalogOps.CatalogTitleDto> titles, IReadOnlyList<string> skuCodes, CancellationToken ct)
+    {
+        try
+        {
+            var req = new Atlas.Contracts.Catalog.V1.UpsertDraftRequest
+            {
+                RequestId = requestId, ActorSub = actorSub, CategoryId = marketId, CorrelationId = requestId,
+            };
+            req.Titles.AddRange(titles.Select(t => new Atlas.Contracts.Catalog.V1.LocalizedText { Locale = t.Locale, Text = t.Title }));
+            req.Skus.AddRange(skuCodes.Select(c => new Atlas.Contracts.Catalog.V1.SkuDraft { SkuCode = c }));
+            var res = await NewClient().UpsertDraftAsync(req, cancellationToken: ct);
+            return (res.Accepted, res.ProductId, res.AggregateVersion, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, "", 0, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason)> UpdateAsync(
+        string productId, long expectedVersion, string actorSub,
+        IReadOnlyList<CatalogOps.CatalogTitleDto> titles, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+    {
+        try
+        {
+            var req = new Atlas.Contracts.Catalog.V1.UpdateDraftRequest
+            {
+                RequestId = $"upd-{Guid.NewGuid():N}", ActorSub = actorSub,
+                ProductId = productId, ExpectedVersion = expectedVersion,
+            };
+            req.Titles.AddRange(titles.Select(t => new Atlas.Contracts.Catalog.V1.LocalizedText { Locale = t.Locale, Text = t.Title }));
+            foreach (var kv in attributes) req.Attributes[kv.Key] = kv.Value;
+            var res = await NewClient().UpdateDraftAsync(req, cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, string? Reason)> DeleteAsync(string productId, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().DeleteDraftAsync(
+                new Atlas.Contracts.Catalog.V1.DeleteDraftRequest { ProductId = productId }, cancellationToken: ct);
+            return (res.Accepted, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason)> SubmitAsync(
+        string requestId, string actorSub, string productId, long expectedVersion, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().SubmitForApprovalAsync(
+                new Atlas.Contracts.Catalog.V1.SubmitForApprovalRequest
+                { RequestId = requestId, ActorSub = actorSub, ProductId = productId, ExpectedVersion = expectedVersion },
+                cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason, string? EventId)> UnpublishAsync(
+        string requestId, string actorSub, string productId, long expectedVersion,
+        string approvalToken, string reason, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().UnpublishProductAsync(
+                new Atlas.Contracts.Catalog.V1.UnpublishProductRequest
+                {
+                    RequestId = requestId, ApprovalToken = approvalToken, ProductId = productId,
+                    ExpectedVersion = expectedVersion, Reason = reason,
+                }, cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion,
+                res.Reason is "" ? null : res.Reason,
+                res.EventId is "" ? null : res.EventId);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail, null);
+        }
+    }
+
+    public async Task<(bool Found, long Version)> GetHeadVersionAsync(string productId, CancellationToken ct)
+    {
+        var detail = await GetAsync(productId, ct);
+        return detail is null ? (false, 0) : (true, detail.Version);
     }
 }
 
