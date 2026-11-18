@@ -19,6 +19,7 @@ import { KeycloakService } from './auth/keycloak.service';
           <a routerLink="/products-new" routerLinkActive="active">Novo produto</a>
           <a routerLink="/publications" routerLinkActive="active">Publicações</a>
           <a routerLink="/publications-new" routerLinkActive="active">Solicitar publicação</a>
+          <a routerLink="/offers" routerLinkActive="active">Ofertas</a>
         </div>
         <div class="side-sec"><span>APROVAÇÕES</span>
           <a routerLink="/approvals" routerLinkActive="active">Ajustes de estoque</a>

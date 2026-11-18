@@ -11,6 +11,7 @@ import { PublicationRequestComponent } from './pages/publication-request.compone
 import { ProductsComponent } from './pages/products.component';
 import { ProductDetailComponent } from './pages/product-detail.component';
 import { ProductNewComponent } from './pages/product-new.component';
+import { OffersComponent } from './pages/offers.component';
 import { AuditComponent } from './pages/audit.component';
 import { GrantsComponent } from './pages/grants.component';
 import { RefundsComponent } from './pages/refunds.component';
@@ -28,6 +29,7 @@ export const routes: Routes = [
   { path: 'products', component: ProductsComponent, canActivate: [authGuard] },
   { path: 'products-new', component: ProductNewComponent, canActivate: [authGuard], data: { roles: ['catalog_editor', 'approver', 'iam_admin'] } },
   { path: 'products/:id', component: ProductDetailComponent, canActivate: [authGuard] },
+  { path: 'offers', component: OffersComponent, canActivate: [authGuard], data: { roles: ['catalog_editor', 'approver', 'iam_admin'] } },
   { path: 'audit', component: AuditComponent, canActivate: [authGuard], data: { roles: ['auditor', 'approver', 'iam_admin'] } },
   { path: 'grants', component: GrantsComponent, canActivate: [authGuard], data: { roles: ['iam_admin'] } },
   { path: 'refunds', component: RefundsComponent, canActivate: [authGuard], data: { roles: ['approver'] } },

@@ -64,6 +64,11 @@ builder.Services.AddSingleton<ApprovalsModule.IOwner>(sp =>
 builder.Services.AddHttpClient("catalog");
 builder.Services.AddSingleton<Atlas.Control.Modules.CatalogOperations.ICatalogOwnerCatalog>(_ => new GrpcCatalogOwnerCatalog(
     builder.Configuration["CatalogOwner:Url"] ?? "http://127.0.0.1:5290"));
+builder.Services.AddSingleton<Atlas.Control.Modules.OffersOperations.IOffersOwnerCatalog>(_ => new GrpcOffersOwnerCatalog(
+    builder.Configuration["OffersOwner:Url"] ?? "http://127.0.0.1:5297"));
+builder.Services.AddSingleton<IAtlasModule>(sp => new Atlas.Control.Modules.OffersOperations.OffersOperationsModule(
+    sp.GetRequiredService<Atlas.Control.Modules.OffersOperations.IOffersOwnerCatalog>(),
+    sp.GetRequiredService<AuditChainStore>()));
 builder.Services.AddSingleton<IAtlasModule>(sp => new Atlas.Control.Modules.CatalogOperations.CatalogOperationsModule(
     sp.GetRequiredService<Atlas.Control.Modules.CatalogOperations.ICatalogOwnerCatalog>(),
     sp.GetRequiredService<OperationApprovalsStore>(),

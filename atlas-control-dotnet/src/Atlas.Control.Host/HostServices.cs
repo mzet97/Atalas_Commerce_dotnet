@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using Atlas.Control.Modules.Approvals;
 using CatalogOps = Atlas.Control.Modules.CatalogOperations;
+using OffersOps = Atlas.Control.Modules.OffersOperations;
 using Atlas.Control.Modules.InventoryOperations;
 using Atlas.Control.Modules.Kernel;
 
@@ -322,6 +323,97 @@ public sealed class GrpcCatalogOwnerDispatcher(string ownerUrl) : ApprovalsModul
         {
             // Falha do owner (ex.: four-eyes FailedPrecondition) vira FAILED auditável, não crash do Control
             return new ApprovalsModule.OwnerPublishResponse(false, null, ex.Status.Detail);
+        }
+    }
+}
+
+/// <summary>Adapter gRPC ao Offers owner (erros viram resultado, nunca throw).</summary>
+public sealed class GrpcOffersOwnerCatalog(string ownerUrl) : OffersOps.IOffersOwnerCatalog
+{
+    private Atlas.Contracts.Offers.V1.OffersOwnerService.OffersOwnerServiceClient NewClient()
+    {
+        var channel = Grpc.Net.Client.GrpcChannel.ForAddress(ownerUrl);
+        return new Atlas.Contracts.Offers.V1.OffersOwnerService.OffersOwnerServiceClient(channel);
+    }
+
+    public async Task<(IReadOnlyList<OffersOps.OfferRowDto> Items, long Total)> ListAsync(
+        string? marketId, string? skuId, int page, int pageSize, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().ListActiveOffersAsync(new Atlas.Contracts.Offers.V1.ListActiveOffersRequest
+            {
+                MarketId = marketId ?? "", SkuId = skuId ?? "",
+                Page = page, PageSize = pageSize,
+            }, cancellationToken: ct);
+            return ([.. res.Items.Select(i => new OffersOps.OfferRowDto(
+                i.OfferId, i.SkuId, i.SellerId, i.MarketId, i.Channel,
+                i.Currency, i.PriceMinor, i.ListPriceMinor, i.AggregateVersion, i.ValidTo))], res.Total);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            Console.Error.WriteLine($"[offers-owner] lista indisponível ({ex.StatusCode})");
+            return ([], 0);
+        }
+    }
+
+    public async Task<(bool Accepted, string OfferId, long Version, string? Reason)> PublishAsync(
+        string requestId, string actorSub, string skuId, string sellerId, string marketId,
+        string channel, string currency, long priceMinor, long listPriceMinor, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().PublishOfferAsync(new Atlas.Contracts.Offers.V1.PublishOfferRequest
+            {
+                RequestId = requestId, ActorSub = actorSub, SkuId = skuId, SellerId = sellerId,
+                MarketId = marketId, Channel = channel, Currency = currency,
+                PriceMinor = priceMinor, ListPriceMinor = listPriceMinor,
+            }, cancellationToken: ct);
+            return (res.Accepted, res.OfferId, res.AggregateVersion, res.Reason is "" ? null : res.Reason);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, "", 0, ex.Status.Detail);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason, string? EventId)> UpdatePriceAsync(
+        string requestId, string actorSub, string offerId, long expectedVersion, long priceMinor, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().UpdateOfferPriceAsync(new Atlas.Contracts.Offers.V1.UpdateOfferPriceRequest
+            {
+                RequestId = requestId, ActorSub = actorSub, OfferId = offerId,
+                ExpectedVersion = expectedVersion, PriceMinor = priceMinor, CorrelationId = requestId,
+            }, cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion,
+                res.Reason is "" ? null : res.Reason,
+                res.EventId is "" ? null : res.EventId);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail, null);
+        }
+    }
+
+    public async Task<(bool Accepted, long Version, string? Reason, string? EventId)> DeactivateAsync(
+        string requestId, string actorSub, string offerId, long expectedVersion, CancellationToken ct)
+    {
+        try
+        {
+            var res = await NewClient().DeactivateOfferAsync(new Atlas.Contracts.Offers.V1.DeactivateOfferRequest
+            {
+                RequestId = requestId, ActorSub = actorSub, OfferId = offerId,
+                ExpectedVersion = expectedVersion, CorrelationId = requestId,
+            }, cancellationToken: ct);
+            return (res.Accepted, res.AggregateVersion,
+                res.Reason is "" ? null : res.Reason,
+                res.EventId is "" ? null : res.EventId);
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, ex.Status.Detail, null);
         }
     }
 }

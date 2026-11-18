@@ -130,6 +130,21 @@ export class ControlApiService {
   mediaBase(): Promise<{ publicBaseUrl: string }> {
     return this.call('/modules/catalog/media-base');
   }
+  listOffers(filter: { market?: string; sku?: string } = {}): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    const q = new URLSearchParams();
+    if (filter.market) q.set('market', filter.market);
+    if (filter.sku) q.set('sku', filter.sku);
+    return this.call(`/modules/offers?${q}`);
+  }
+  createOffer(input: { skuId: string; sellerId?: string; marketId: string; channel?: string; currency: string; priceMinor: number; listPriceMinor?: number }): Promise<{ offerId: string; version: number }> {
+    return this.call('/modules/offers', { method: 'POST', body: JSON.stringify(input) });
+  }
+  repriceOffer(id: string, expectedVersion: number, priceMinor: number): Promise<{ offerId: string; version: number }> {
+    return this.call(`/modules/offers/${id}`, { method: 'PUT', body: JSON.stringify({ expectedVersion, priceMinor }) });
+  }
+  deactivateOffer(id: string, expectedVersion: number): Promise<{ offerId: string; version: number }> {
+    return this.call(`/modules/offers/${id}?expectedVersion=${expectedVersion}`, { method: 'DELETE' });
+  }
   requestImageUpload(id: string, contentType: string, contentLength: number): Promise<{ uploadUrl: string; objectKey: string; expiresAtUtc: string }> {
     return this.call(`/modules/catalog/products/${id}/image-uploads`, { method: 'POST', body: JSON.stringify({ contentType, contentLength }) });
   }

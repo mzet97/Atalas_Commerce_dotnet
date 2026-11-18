@@ -1,7 +1,7 @@
 # F4 deploy no k8s .51 (ns dotnet-atlas). Imagens locais importadas.
 host:
   enabled: true
-  image: { repository: atlas/control-host, tag: "local-f13" }
+  image: { repository: atlas/control-host, tag: "local-f15" }
   containerPort: 8080
   replicaCount: 1
   hpa: { enabled: false, minReplicas: 2, maxReplicas: 4, cpuTargetPercent: 70 }
@@ -15,6 +15,8 @@ host:
       value: http://atlas-catalog-api.dotnet-atlas:81
     - name: InventoryOwner__Url
       value: http://atlas-inventory-api.dotnet-atlas:81
+    - name: OffersOwner__Url
+      value: http://atlas-offers-api.dotnet-atlas:81
     - name: Kestrel__Endpoints__Http__Url
       value: http://+:8080
     - name: Media__PublicBaseUrl
@@ -28,5 +30,5 @@ host:
       key: approval-token-secret
 web:
   enabled: true
-  image: { repository: atlas/control-web, tag: "local-f15" }
+  image: { repository: atlas/control-web, tag: "local-f16" }
   containerPort: 4200

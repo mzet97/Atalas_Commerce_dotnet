@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Modules\Atlas.Control.Modules.CatalogOperations\Atlas.Control.Modules.CatalogOperations.csproj" />
+    <ProjectReference Include="..\Modules\Atlas.Control.Modules.OffersOperations\Atlas.Control.Modules.OffersOperations.csproj" />
     <ProjectReference Include="..\Modules\Atlas.Control.Modules.Approvals\Atlas.Control.Modules.Approvals.csproj" />
     <ProjectReference Include="..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
     <ProjectReference Include="..\Modules\Atlas.Control.Modules.Kernel\Atlas.Control.Modules.Kernel.csproj" />

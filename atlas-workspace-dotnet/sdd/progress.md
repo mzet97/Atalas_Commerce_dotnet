@@ -304,3 +304,13 @@
 - Prova E2E real: draft → PUT bytes reais → attach → publish four-eyes → vitrine com `<img>` 200 → 2ª foto em Published (ImagesUpdated) → negative (gif rejeitado) → despublicar + grants revogados + SA clients e usuários temporários removidos. Suite vitrine 13/13 no f19 (CLS 0.0000).
 - Bugs reais: (1) URL pré-assinada saía com host interno — assinatura exige endpoint PÚBLICO (`S3:PresignServiceUrl` separado); (2) SDK devolve `Buckets` nulo no MinIO → `HeadBucket` em vez de `ListBuckets`; (3) policy JSON mal fechada quebrando a assinatura; (4) `sudo -S` + scp duplo jogou `Program.cs` no projeto errado; (5) regression CLS: botões de market com altura de fonte instável (38px vs esqueleto 30px) → altura fixa 26px nos dois lados.
 - Honesto: `detach` remove da ficha, não apaga bytes do bucket (auditoria/GDPR → follow-up com lifecycle); sem PG local, testes de projeção novos compilam mas só rodam com infra (coberto pelo E2E no cluster).
+
+## 2026-11-18 → Preço por mercado/país no Control (módulo Ofertas)
+
+- Pedido do dono: definir preço por loja/país pela interface (só existia `POST /admin/offers` direto no owner — sem console, sem four-eyes). Entregue: página Ofertas no Control (grade por SKU×mercado, criar, reprice com CAS, desativar), tudo com role `catalog_editor` + auditoria.
+- Owner: servidor gRPC no Offers.Api (porta 5297 h2c; `MapGrpcService`), `UpdateOfferPrice/DeactivateOffer/ListActiveOffers` no proto + `PriceChangedV1/OfferDeactivatedV1` no outbox e AsyncAPI; store com CAS e índice único parcial preservado.
+- Projetor: `PriceChangedV1` atualiza preço com stale-guard; `OfferDeactivatedV1` remove a linha. Vitrine não mudou (já lia a oferta ativa mais barata por mercado).
+- BUG REAL encontrado e corrigido (bloqueava tudo): `OutboxDoc.DomainEvent` nunca preenchia `AggregateVersion` (sempre 1) — todo stale-guard de re-projeção falhava silenciosamente. Agora a versão do envelope = versão pós-transação nos 9 sites que têm consumidor versionado (catalog/offers/inventory); orders/payments mantêm default (sem consumidor versionado — documentado, não mexido).
+- BUG REAL 2: `continue` no novo branch do projetor pulava o `Commit` do fim do loop (rollback silencioso) — removido; log "aplicado" só conta após execute.
+- Prova E2E: criar (negativos moeda/prazo + duplicada 409) → vitrine exibe → reprice → vitrine atualiza → CAS 409 → desativar → some da vitrine → demo restaurado (4990). UI provada no browser (criar/reprecar/desativar + screenshots), temp user removido. Suite vitrine 13/13.
+- Honesto: testes de integração novos compilam mas exigem Mongo local (mesma limitação dos existentes); preço tem efeito imediato (sem four-eyes — decisão explícita; endurecer depois se o dono quiser).

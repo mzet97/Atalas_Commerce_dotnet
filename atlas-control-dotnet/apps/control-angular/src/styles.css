@@ -148,6 +148,7 @@ a { color: var(--accent); }
 button.link { background: none; border: none; color: inherit; cursor: pointer; text-decoration: underline; padding: 0; font-size: inherit; }
 dl.facts { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; margin: 12px 0; }
 button.link.danger-text { color: var(--bad); }
+td .link + .link { margin-left: 10px; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin: 8px 0 4px; }
 .gallery figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: #fff; }
 .gallery img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; background: #f4f6f8; }
