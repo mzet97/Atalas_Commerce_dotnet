@@ -16,6 +16,8 @@ channels:
     messages:
       product.published:
         $ref: '#/components/messages/domainEvent'
+      product.images_updated:
+        $ref: '#/components/messages/domainEvent'
       product.updated:
         $ref: '#/components/messages/domainEvent'
       product.unpublished:

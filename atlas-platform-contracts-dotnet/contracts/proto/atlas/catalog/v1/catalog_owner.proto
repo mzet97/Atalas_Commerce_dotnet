@@ -23,6 +23,63 @@ service CatalogOwnerService {
   rpc DeleteDraft(DeleteDraftRequest) returns (DeleteDraftResponse);
   // Tira produto da venda (Published -> Unpublished + Product.UnpublishedV1; four-eyes).
   rpc UnpublishProduct(UnpublishProductRequest) returns (UnpublishProductResponse);
+  // Emite URL pré-assinada PUT (MinIO/S3) para upload direto do browser.
+  // Owner valida actor/content-type/tamanho ANTES de assinar; bytes vão ao S3.
+  rpc RequestImageUpload(RequestImageUploadRequest) returns (RequestImageUploadResponse);
+  // Anexa objeto já enviado ao S3 (owner confere via HEAD: chave, tipo, tamanho; CAS).
+  rpc AttachImage(AttachImageRequest) returns (AttachImageResponse);
+  // Remove imagem do draft (qualquer estado; CAS).
+  rpc DetachImage(DetachImageRequest) returns (DetachImageResponse);
+}
+
+message ImageView {
+  string key = 1;          // object key no bucket (ex. products/{id}/{guid}.jpg)
+  string content_type = 2; // image/jpeg | image/png | image/webp
+  int64 size_bytes = 3;
+}
+
+message RequestImageUploadRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string product_id = 3;
+  string content_type = 4; // allowlist: image/jpeg | image/png | image/webp
+  int64 content_length = 5; // teto 5 MiB (barrado aqui; HEAD revalida no attach)
+}
+
+message RequestImageUploadResponse {
+  bool accepted = 1;
+  string reason = 2;        // vazio se aceito
+  string upload_url = 3;    // PUT pré-assinado (TTL curto)
+  string object_key = 4;    // chave a anexar depois
+  string expires_at_utc = 5;
+}
+
+message AttachImageRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string product_id = 3;
+  int64 expected_version = 4; // concorrência otimista
+  string object_key = 5;
+}
+
+message AttachImageResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string reason = 3;
+}
+
+message DetachImageRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string product_id = 3;
+  int64 expected_version = 4;
+  string object_key = 5;
+}
+
+message DetachImageResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string reason = 3;
 }
 
 message UpsertDraftRequest {
@@ -78,6 +135,7 @@ message GetProductResponse {
   int64 aggregate_version = 3;
   repeated LocalizedText titles = 4;
   repeated SkuView skus = 5;
+  repeated ImageView images = 6; // ordem de anexo; [0] = capa
 }
 
 message ListDraftsRequest {
@@ -101,6 +159,7 @@ message DraftView {
   repeated LocalizedText titles = 5;
   int32 sku_count = 6;
   string created_by = 7;
+  repeated ImageView images = 8; // grade do Control exibe a capa ([0])
 }
 
 message UpdateDraftRequest {
