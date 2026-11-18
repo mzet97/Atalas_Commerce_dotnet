@@ -94,3 +94,95 @@ public sealed class MongoOffersStoreTests : IAsyncLifetime
         Assert.Equal(2, await OutboxCountAsync());
     }
 }
+
+/// <summary>Reprice/deactivate via store (fatia preço no Control): CAS + eventos.
+/// Requer Mongo (mesmo harness do projeto); sem runner local, roda em CI/infra.
+/// </summary>
+public sealed class OfferPriceChangeStoreTests : IAsyncLifetime
+{
+    private const string ConnStr = "mongodb://127.0.0.1:27017/?directConnection=true";
+    private readonly string _dbName = $"atlas_off_{Guid.NewGuid():N}";
+    private MongoOffersStore _store = default!;
+    private IMongoDatabase _db = default!;
+    private readonly DateTimeOffset _from = DateTimeOffset.UtcNow.AddMinutes(-1);
+    private readonly DateTimeOffset _to = DateTimeOffset.UtcNow.AddDays(30);
+
+    public Task InitializeAsync()
+    {
+        _store = MongoOffersStore.Create(ConnStr, _dbName);
+        _db = new MongoClient(ConnStr).GetDatabase(_dbName);
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync() => _db.Client.DropDatabaseAsync(_dbName);
+
+    private async Task<OfferId> PublishAsync(string req = "off-p1", long price = 1000)
+    {
+        var r = await _store.PublishInTransactionAsync(new PublishOfferCommand(
+            RequestId: req, ActorSub: "pricing-mgr-1", SkuId: "sku-p1", SellerId: "seller-1p",
+            MarketId: "BR", Channel: "web", Currency: "BRL", PriceMinor: price, ListPriceMinor: 1500,
+            ValidFromUtc: _from, ValidToUtc: _to, CorrelationId: $"corr-{req}"), CancellationToken.None);
+        Assert.True(r.Accepted, r.Reason);
+        return r.OfferId;
+    }
+
+    private async Task<int> OutboxCountAsync() =>
+        (int)await _db.GetCollection<MongoOffersStore.OutboxDoc>("offers.outbox").CountDocumentsAsync(_ => true);
+
+    private async Task<long> VersionAsync(OfferId id) =>
+        (await _db.GetCollection<MongoOffersStore.OfferDoc>("offers.offers")
+            .Find(o => o.Id == id.Value).FirstAsync()).Version;
+
+    [Fact]
+    public async Task Reprice_valido_incrementa_versao_e_emite_PriceChangedV1()
+    {
+        var id = await PublishAsync();
+        var v0 = await VersionAsync(id);
+        var r = await _store.UpdatePriceInTransactionAsync(new UpdateOfferPriceCommand(
+            "upd-1", "pricing-mgr-1", id, v0, 900, "corr-upd-1"), CancellationToken.None);
+        Assert.True(r.Accepted, r.Reason);
+        Assert.Equal(v0 + 1, r.Version);
+        Assert.NotNull(r.EventId);
+        Assert.Equal(2, await OutboxCountAsync()); // published + pricechanged
+    }
+
+    [Fact]
+    public async Task Reprice_com_versao_defasada_é_conflito_sem_evento()
+    {
+        var id = await PublishAsync();
+        var v0 = await VersionAsync(id);
+        var ok = await _store.UpdatePriceInTransactionAsync(new UpdateOfferPriceCommand(
+            "upd-1", "pricing-mgr-1", id, v0, 900, "corr-upd-1"), CancellationToken.None);
+        Assert.True(ok.Accepted);
+        var stale = await _store.UpdatePriceInTransactionAsync(new UpdateOfferPriceCommand(
+            "upd-2", "pricing-mgr-1", id, v0, 800, "corr-upd-2"), CancellationToken.None);
+        Assert.False(stale.Accepted);
+        Assert.Contains("conflito", stale.Reason);
+        Assert.Equal(2, await OutboxCountAsync()); // rejeitado não gera evento
+    }
+
+    [Fact]
+    public async Task Reprice_acima_do_lista_é_negado_sem_evento()
+    {
+        var id = await PublishAsync();
+        var v0 = await VersionAsync(id);
+        var r = await _store.UpdatePriceInTransactionAsync(new UpdateOfferPriceCommand(
+            "upd-1", "pricing-mgr-1", id, v0, 1600, "corr-upd-1"), CancellationToken.None);
+        Assert.False(r.Accepted);
+        Assert.Equal(1, await OutboxCountAsync());
+    }
+
+    [Fact]
+    public async Task Desativar_emite_OfferDeactivatedV1_e_libera_reprice_futuro()
+    {
+        var id = await PublishAsync();
+        var v0 = await VersionAsync(id);
+        var d = await _store.DeactivateInTransactionAsync(
+            "deact-1", "pricing-mgr-1", id, v0, "corr-deact-1", CancellationToken.None);
+        Assert.True(d.Accepted, d.Reason);
+        Assert.Equal(2, await OutboxCountAsync());
+        var reprice = await _store.UpdatePriceInTransactionAsync(new UpdateOfferPriceCommand(
+            "upd-2", "pricing-mgr-1", id, d.Version, 800, "corr-upd-2"), CancellationToken.None);
+        Assert.False(reprice.Accepted); // desativada não aceita reprice
+    }
+}

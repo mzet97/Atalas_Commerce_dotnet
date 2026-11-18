@@ -121,7 +121,7 @@ public sealed class MongoCatalogStore : ICatalogStore
                                 ?? doc.ToDomain().Titles.FirstOrDefault()?.Text ?? "",
                     ["aggregate_version"] = @event.AggregateVersion,
                     ["image_keys"] = new BsonArray(doc.Images.Select(i => i.Key)),
-                }), cancellationToken: token);
+                }, @event.AggregateVersion), cancellationToken: token);
 
             return new PublishOutcome(true, @event.AggregateVersion, eventId.ToString(), null);
         }, cancellationToken: ct);
@@ -249,7 +249,7 @@ public sealed class MongoCatalogStore : ICatalogStore
                     ["actor_sub"] = actorSub,
                     ["reason"] = reason,
                     ["aggregate_version"] = @event.AggregateVersion,
-                }), cancellationToken: token);
+                }, @event.AggregateVersion), cancellationToken: token);
             return new PublishOutcome(true, @event.AggregateVersion, eventId.ToString(), null);
         }, cancellationToken: ct);
     }
@@ -336,7 +336,7 @@ public sealed class MongoCatalogStore : ICatalogStore
                 ["market_id"] = string.Empty, // projeção preserva market da linha existente
                 ["image_keys"] = new BsonArray(draft.Images.Select(i => i.Key)),
                 ["aggregate_version"] = draft.Version,
-            }), cancellationToken: token);
+            }, draft.Version), cancellationToken: token);
         return eventId.ToString();
     }
 
@@ -399,9 +399,9 @@ public sealed class MongoCatalogStore : ICatalogStore
         public BsonDocument Payload { get; set; } = default!;
         public DateTimeOffset OccurredAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
-        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload) => new()
+        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload, long aggregateVersion = 1) => new()
         {
-            Id = eventId, EventType = eventType, AggregateId = aggregateId, CorrelationId = correlationId, Payload = payload,
+            Id = eventId, EventType = eventType, AggregateId = aggregateId, CorrelationId = correlationId, Payload = payload, AggregateVersion = aggregateVersion,
         };
     }
 }

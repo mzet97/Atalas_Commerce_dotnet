@@ -93,7 +93,7 @@ public sealed class MongoOffersStore : IOffersStore
                         ["scope_key"] = offer.ScopeKey(),
                         ["currency"] = command.Currency,
                         ["price_minor"] = command.PriceMinor,
-                    }), cancellationToken: token);
+                    }, offer.Version + 1 /* From ancora em 0; Inc da txn = 1 */), cancellationToken: token);
 
                 return new PublishOfferOutcome(true, offer.Id, offer.Version, null);
             }, cancellationToken: ct);
@@ -106,6 +106,111 @@ public sealed class MongoOffersStore : IOffersStore
     }
 
     // ---- documentos ----
+    /// <summary>Reprice com CAS (só Active, mesma moeda, ≤ lista); emite PriceChangedV1.</summary>
+    public async Task<UpdateOfferPriceOutcome> UpdatePriceInTransactionAsync(UpdateOfferPriceCommand command, CancellationToken ct)
+    {
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var doc = await Offers().Find(s, o => o.Id == command.OfferId.Value).FirstOrDefaultAsync(cancellationToken: token);
+            if (doc is null) return new UpdateOfferPriceOutcome(false, 0, null, "oferta inexistente");
+            if (doc.Status != OfferStatus.Active)
+                return new UpdateOfferPriceOutcome(false, doc.Version, null, $"reprice exige oferta ativa (estado atual: {doc.Status})");
+            if (doc.Version != command.ExpectedVersion)
+                return new UpdateOfferPriceOutcome(false, doc.Version, null, $"conflito de versão (esperado {command.ExpectedVersion}, atual {doc.Version})");
+            var offer = doc.ToDomain();
+            var oldPrice = offer.Price.AmountMinor;
+            try
+            {
+                offer.ChangePrice(Money.Create(command.PriceMinor, offer.Price.Currency), DateTimeOffset.UtcNow);
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ArgumentOutOfRangeException)
+            {
+                return new UpdateOfferPriceOutcome(false, doc.Version, null, ex.Message);
+            }
+            var result = await Offers().UpdateOneAsync(s,
+                o => o.Id == command.OfferId.Value && o.Version == command.ExpectedVersion,
+                Builders<OfferDoc>.Update.Set(o => o.PriceMinor, offer.Price.AmountMinor).Inc(o => o.Version, 1),
+                cancellationToken: token);
+            if (result.ModifiedCount != 1)
+                return new UpdateOfferPriceOutcome(false, doc.Version, null, "conflito de concorrência");
+            var eventId = Guid.NewGuid();
+            await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
+                eventId, "PriceChangedV1", command.OfferId.Value.ToString(), command.CorrelationId,
+                new BsonDocument
+                {
+                    ["offer_id"] = command.OfferId.Value.ToString(),
+                    ["scope_key"] = offer.ScopeKey(),
+                    ["currency"] = offer.Price.Currency,
+                    ["old_price_minor"] = oldPrice,
+                    ["price_minor"] = offer.Price.AmountMinor,
+                    ["aggregate_version"] = offer.Version,
+                }, offer.Version), cancellationToken: token);
+            return new UpdateOfferPriceOutcome(true, offer.Version, eventId.ToString(), null);
+        }, cancellationToken: ct);
+    }
+
+    /// <summary>Desativa oferta (CAS); emite OfferDeactivatedV1 para limpar a view.</summary>
+    public async Task<DeactivateOfferOutcome> DeactivateInTransactionAsync(
+        string requestId, string actorSub, OfferId offerId, long expectedVersion, string correlationId, CancellationToken ct)
+    {
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var doc = await Offers().Find(s, o => o.Id == offerId.Value).FirstOrDefaultAsync(cancellationToken: token);
+            if (doc is null) return new DeactivateOfferOutcome(false, 0, null, "oferta inexistente");
+            if (doc.Status != OfferStatus.Active)
+                return new DeactivateOfferOutcome(false, doc.Version, null, $"desativação exige oferta ativa (estado atual: {doc.Status})");
+            if (doc.Version != expectedVersion)
+                return new DeactivateOfferOutcome(false, doc.Version, null, $"conflito de versão (esperado {expectedVersion}, atual {doc.Version})");
+            var offer = doc.ToDomain();
+            try
+            {
+                offer.Deactivate();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return new DeactivateOfferOutcome(false, doc.Version, null, ex.Message);
+            }
+            var result = await Offers().UpdateOneAsync(s,
+                o => o.Id == offerId.Value && o.Version == expectedVersion,
+                Builders<OfferDoc>.Update.Set(o => o.Status, OfferStatus.Deactivated).Inc(o => o.Version, 1),
+                cancellationToken: token);
+            if (result.ModifiedCount != 1)
+                return new DeactivateOfferOutcome(false, doc.Version, null, "conflito de concorrência");
+            var eventId = Guid.NewGuid();
+            await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
+                eventId, "OfferDeactivatedV1", offerId.Value.ToString(), correlationId,
+                new BsonDocument
+                {
+                    ["offer_id"] = offerId.Value.ToString(),
+                    ["scope_key"] = offer.ScopeKey(),
+                    ["aggregate_version"] = offer.Version,
+                }, offer.Version), cancellationToken: token);
+            return new DeactivateOfferOutcome(true, offer.Version, eventId.ToString(), null);
+        }, cancellationToken: ct);
+    }
+
+    /// <summary>Grade do Control: ofertas ativas com filtros (leitura operacional).</summary>
+    public async Task<(IReadOnlyList<OfferSummary> Items, long Total)> ListActiveAsync(
+        string? marketId, string? skuId, int page, int pageSize, CancellationToken ct)
+    {
+        var filter = Builders<OfferDoc>.Filter.Eq(o => o.Status, OfferStatus.Active);
+        if (!string.IsNullOrWhiteSpace(marketId))
+            filter &= Builders<OfferDoc>.Filter.Eq(o => o.MarketId, marketId);
+        if (!string.IsNullOrWhiteSpace(skuId))
+            filter &= Builders<OfferDoc>.Filter.Eq(o => o.SkuId, skuId);
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var total = await Offers().CountDocumentsAsync(filter, cancellationToken: ct);
+        var docs = await Offers().Find(filter)
+            .SortByDescending(d => d.ValidToUtc).Skip((page - 1) * pageSize).Limit(pageSize)
+            .ToListAsync(ct);
+        return ([.. docs.Select(d => new OfferSummary(
+            d.Id, d.SkuId, d.SellerId, d.MarketId, d.Channel,
+            d.Currency, d.PriceMinor, d.ListPriceMinor, d.Version, d.ValidToUtc))], total);
+    }
+
     public sealed class OfferDoc
     {
         [BsonRepresentation(BsonType.String)]
@@ -141,6 +246,11 @@ public sealed class MongoOffersStore : IOffersStore
             Status = o.Status,
             Version = o.Version,
         };
+
+        public Offer ToDomain() => Offer.Hydrate(
+            new OfferId(Id), SkuId, SellerId, MarketId, Channel,
+            Money.Create(PriceMinor, Currency), Money.Create(ListPriceMinor, Currency),
+            ValidFromUtc, ValidToUtc, Status, Version);
     }
 
     public sealed class OutboxDoc
@@ -156,9 +266,9 @@ public sealed class MongoOffersStore : IOffersStore
         public BsonDocument Payload { get; set; } = default!;
         public DateTimeOffset OccurredAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
-        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload) => new()
+        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload, long aggregateVersion = 1) => new()
         {
-            Id = eventId, EventType = eventType, AggregateId = aggregateId, CorrelationId = correlationId, Payload = payload,
+            Id = eventId, EventType = eventType, AggregateId = aggregateId, CorrelationId = correlationId, Payload = payload, AggregateVersion = aggregateVersion,
         };
     }
 }

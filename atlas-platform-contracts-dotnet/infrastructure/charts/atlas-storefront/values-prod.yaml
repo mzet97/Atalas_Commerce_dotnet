@@ -49,7 +49,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/catalog-api
-      tag: "local-f8"
+      tag: "local-f9"
     containerPort: 8080
     extraPorts:
       - name: grpc
@@ -105,8 +105,12 @@ atlasService:
     enabled: true
     image:
       repository: atlas/offers-api
-      tag: "local-f3"
+      tag: "local-f6"
     containerPort: 8080
+    extraPorts:
+      - name: grpc
+        port: 81
+        targetPort: 5297
     replicaCount: 1
     hpa:
       enabled: false
@@ -134,7 +138,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/inventory-api
-      tag: "local-f3"
+      tag: "local-f4"
     containerPort: 8080
     extraPorts:
       - name: grpc
@@ -367,7 +371,7 @@ atlasService:
     enabled: true
     image:
       repository: atlas/projections
-      tag: "local-f5"
+      tag: "local-f8"
     containerPort: 8080
     replicaCount: 1
     hpa:

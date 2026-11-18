@@ -136,6 +136,34 @@ public sealed class OffersProjector(string connectionString, string consumerId,
                 if (await dedup.ExecuteNonQueryAsync(ct) == 0) { await tx.RollbackAsync(ct); continue; }
             }
 
+            if (evt.EventType is "PriceChangedV1" or "OfferDeactivatedV1")
+            {
+                // Reprice: atualiza preço da view (stale guard); desativação: remove a linha.
+                var chOfferId = evt.Payload.GetProperty("offer_id").GetString();
+                if (evt.EventType == "OfferDeactivatedV1")
+                {
+                    await using var del = new NpgsqlCommand($"""
+                        DELETE FROM {offersTable} WHERE offer_id = @id AND source_version <= @ver
+                        """, conn, tx);
+                    del.Parameters.AddWithValue("id", Guid.Parse(chOfferId!));
+                    del.Parameters.AddWithValue("ver", evt.AggregateVersion);
+                    await del.ExecuteNonQueryAsync(ct);
+                }
+                else
+                {
+                    await using var upd = new NpgsqlCommand($"""
+                        UPDATE {offersTable} SET price_minor = @price, source_version = @ver, projected_at = now()
+                        WHERE offer_id = @id AND source_version < @ver
+                        """, conn, tx);
+                    upd.Parameters.AddWithValue("id", Guid.Parse(chOfferId!));
+                    upd.Parameters.AddWithValue("price", evt.Payload.GetProperty("price_minor").GetInt64());
+                    upd.Parameters.AddWithValue("ver", evt.AggregateVersion);
+                    await upd.ExecuteNonQueryAsync(ct);
+                }
+                applied++;
+                // SEM continue: o commit único do fim do loop precisa rodar (using sem commit = rollback).
+            }
+
             if (evt.EventType == "Offer.PublishedV1")
             {
                 var offerId = evt.Payload.GetProperty("offer_id").GetString();

@@ -26,7 +26,7 @@ public enum OfferStatus
 /// índice único no store (persistência); o domínio valida janela e transições.
 /// Alterações nunca reescrevem Order confirmado (INV-ORDER-001 — snapshots).
 /// </summary>
-public sealed class Offer
+public sealed partial class Offer
 {
     public OfferId Id { get; }
     public string SkuId { get; }
@@ -115,3 +115,19 @@ public sealed class Offer
 /// <summary>Eventos de domínio do contexto (envelope aplicado na camada Application).</summary>
 public sealed record OfferPublished(string OfferId, string ScopeKey, string Currency, long PriceMinor, long AggregateVersion, DateTimeOffset OccurredAtUtc);
 public sealed record PriceChanged(string OfferId, long OldPriceMinor, long NewPriceMinor, long AggregateVersion, DateTimeOffset OccurredAtUtc);
+public sealed record OfferDeactivatedV1(string OfferId, string ScopeKey, long AggregateVersion, DateTimeOffset OccurredAtUtc);
+
+public sealed partial class Offer
+{
+    /// <summary>Reidratação a partir do write model (Mongo) — não revalida história.</summary>
+    public static Offer Hydrate(
+        OfferId id, string skuId, string sellerId, string marketId, string channel,
+        Money price, Money listPrice, DateTimeOffset validFromUtc, DateTimeOffset validToUtc,
+        OfferStatus status, long version)
+    {
+        var offer = new Offer(id, skuId, sellerId, marketId, channel, price, listPrice, validFromUtc, validToUtc);
+        offer.Status = status;
+        offer.Version = version;
+        return offer;
+    }
+}

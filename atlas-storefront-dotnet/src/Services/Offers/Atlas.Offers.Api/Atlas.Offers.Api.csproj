@@ -4,9 +4,11 @@
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Grpc.AspNetCore" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Atlas.Offers.Application\Atlas.Offers.Application.csproj" />
     <ProjectReference Include="..\Atlas.Offers.Infrastructure\Atlas.Offers.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
   </ItemGroup>
 </Project>

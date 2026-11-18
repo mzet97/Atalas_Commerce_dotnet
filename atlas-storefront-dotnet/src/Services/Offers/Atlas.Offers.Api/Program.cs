@@ -8,6 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(o =>
 {
     o.ListenLocalhost(5293, l => l.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1);
+    // gRPC em todas as interfaces (mesma porta no dev e no cluster; sem override via config).
+    o.ListenAnyIP(5297, l => l.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2);
 });
 builder.Services.AddOpenTelemetry().WithTracing(t => t.AddSource("Atlas.Offers").AddOtlpExporter());
 builder.Services.AddHealthChecks();
@@ -18,10 +20,14 @@ var mongoDb = builder.Configuration["Mongo:OffersDatabase"] ?? "atlas_offers";
 builder.Services.AddSingleton(_ => MongoOffersStore.Create(mongoConn, mongoDb));
 builder.Services.AddSingleton<Atlas.Offers.Application.IOffersStore>(sp => sp.GetRequiredService<MongoOffersStore>());
 builder.Services.AddSingleton<PublishOfferHandler>();
+builder.Services.AddSingleton<UpdateOfferPriceHandler>();
+builder.Services.AddSingleton<DeactivateOfferHandler>();
+builder.Services.AddGrpc();
 
 var app = builder.Build();
 app.MapOpenApi();
 app.MapHealthChecks("/health");
+app.MapGrpcService<Atlas.Offers.Api.Grpc.OffersOwnerGrpcService>();
 
 app.MapGet("/", () => Results.Ok(new { service = "Atlas.Offers.Api", milestone = "M5" }));
 

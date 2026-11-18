@@ -114,6 +114,7 @@ public sealed partial class MongoInventoryStore : IInventoryStore
                     eventType: "Stock.ReservedV1",
                     aggregateId: reservation.Id.ToString(),
                     correlationId: correlationId,
+                    aggregateVersion: reservation.Version,
                     payload: new BsonDocument
                     {
                         ["reservation_id"] = reservation.Id.ToString(),
@@ -186,7 +187,7 @@ public sealed partial class MongoInventoryStore : IInventoryStore
                         ["delta"] = delta,
                         ["version"] = newVersion,
                         ["reason"] = reason,
-                    }), cancellationToken: token);
+                    }, newVersion), cancellationToken: token);
                 return ((bool, long)?)(true, newVersion);
             }, cancellationToken: ct);
         }
@@ -227,7 +228,7 @@ public sealed partial class MongoInventoryStore : IInventoryStore
             }
             await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
                 Guid.NewGuid(), "Reservation.ReleasedV1", reservationId.ToString(), correlationId,
-                new BsonDocument { ["reservation_id"] = reservationId.ToString(), ["reason"] = reason }), cancellationToken: token);
+                new BsonDocument { ["reservation_id"] = reservationId.ToString(), ["reason"] = reason }, reservation.Version + 1 /* Inc da txn */), cancellationToken: token);
             return true;
         }, cancellationToken: ct);
     }
@@ -312,10 +313,10 @@ public sealed partial class MongoInventoryStore : IInventoryStore
         public BsonDocument Payload { get; set; } = default!;
         public DateTimeOffset OccurredAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
-        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload) => new()
+        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload, long aggregateVersion = 1) => new()
         {
             Id = eventId, EventType = eventType, AggregateId = aggregateId,
-            CorrelationId = correlationId, Payload = payload,
+            CorrelationId = correlationId, Payload = payload, AggregateVersion = aggregateVersion,
         };
     }
 }
