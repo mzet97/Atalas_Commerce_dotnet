@@ -30,6 +30,22 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: {{ $cfg.containerPort }}
+            {{- range $cfg.extraPorts }}
+            - containerPort: {{ .targetPort }}
+              name: {{ .name }}
+            {{- end }}
+          env:
+            {{- range $cfg.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range $cfg.secrets }}
+            - name: {{ .envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
           resources:
             requests:
               cpu: 100m
@@ -37,18 +53,20 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          {{- if and $cfg.probes $cfg.probes.enabled }}
           livenessProbe:
             httpGet:
-              path: /health
+              path: {{ $cfg.probes.path }}
               port: {{ $cfg.containerPort }}
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health
+              path: {{ $cfg.probes.path }}
               port: {{ $cfg.containerPort }}
-            initialDelaySeconds: 5
+            initialDelaySeconds: 8
             periodSeconds: 5
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -62,8 +80,14 @@ spec:
   selector:
     app: atlas-{{ $name }}
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: {{ $cfg.containerPort }}
+    {{- range $cfg.extraPorts }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .targetPort }}
+    {{- end }}
 ---
 {{- if $cfg.hpa.enabled }}
 apiVersion: autoscaling/v2
@@ -103,8 +127,33 @@ spec:
               app: atlas-{{ $cfg.networkPolicy.allowFromApp }}
       ports:
         - protocol: TCP
-          port: 80
-    {{- else }}
+          port: {{ $cfg.containerPort }}
+        {{- range $cfg.extraPorts }}
+        - protocol: TCP
+          port: {{ .targetPort }}
+        {{- end }}
+    {{- end }}
+    {{- if $cfg.networkPolicy.allowSameNamespace }}
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ $cfg.containerPort }}
+        {{- range $cfg.extraPorts }}
+        - protocol: TCP
+          port: {{ .targetPort }}
+        {{- end }}
+    {{- end }}
+    {{- range $cfg.networkPolicy.allowFromNamespaces }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+      ports:
+        - protocol: TCP
+          port: {{ $cfg.containerPort }}
+    {{- end }}
+    {{- if and (not $cfg.networkPolicy.allowFromApp) (not $cfg.networkPolicy.allowSameNamespace) (not $cfg.networkPolicy.allowFromNamespaces) }}
     - from: []
     {{- end }}
 {{- end }}

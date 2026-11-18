@@ -6,6 +6,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Atlas.Fulfillment.Infrastructure\Atlas.Fulfillment.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
+    <ProjectReference Include="..\..\..\..\..\atlas-platform-contracts-dotnet\src\Atlas.Contracts.Grpc\Atlas.Contracts.Grpc.csproj" />
   </ItemGroup>
 </Project>

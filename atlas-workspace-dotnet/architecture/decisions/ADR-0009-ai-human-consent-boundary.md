@@ -1,6 +1,6 @@
 # ADR-0009 — Boundary de consentimento humano para mutações da IA
 
-**Status:** PROPOSED · **Data:** 2026-10-27
+**Status:** ACCEPTED · **Data:** 2026-10-27 · **Aceite:** 2026-11-03 (GATE M7 PASS — sdd/reports/M7-gate-report.md; EVD-007-001; ShoppingAssistant.Api :5296 com allowlist read-only provada por reflexão; consent HMAC inviolável — payload/subject diverso → 403; fallback busca convencional; 7/7 testes)
 
 ## Contexto
 O LLM não é autoridade de negócio; o contrato proíbe compra autônoma, captura, estorno, preço, estoque e IAM por agente (INV-AI-001). A mutação de carrinho é o único efeito permitido, condicionado a confirmação humana verificável.

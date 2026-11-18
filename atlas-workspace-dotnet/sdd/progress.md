@@ -198,3 +198,48 @@
 - Lição de processo: CA1305 warning-as-error falhava builds silenciosamente e o binário
   velho continuava servindo — SEMPRE checar timestamp do DLL após rebuild.
 - Próximo: FASE 1 — M5/SPEC-005 (spec DRAFT→READY; carrinho/checkout UI + Playwright).
+
+## 2026-11-16 → F1 higiene SDD (pós-auditoria 360°)
+
+- ADR-0009 promovida a ACCEPTED (GATE M7 PASS 2026-11-03; EVD-007-001).
+- `sdd/roadmap.md` sincronizado com os gates (M0–M7 PASS; M8 PASS parcial; M9 IN_PROGRESS; M11 DRAFT).
+- `sdd/decisions-open.md` sincronizado: 6 ACCEPTED (0008/0009/0010/0011/0012/0020); 14 PROPOSED restantes; ambiente atualizado (Podman, buf, kubectl/Helm, MAF resolvidos; Postgres `.52`, Kafka e Keycloak pendentes p/ Fase 4).
+- `EVD-006-001 §5` (runbook DLQ/replay) recuperado a partir das evidências §§1-4.
+- Nota de processo: `specs/*/tasks.md` seguem TODO (artefatos do Estágio A); o fechamento por tarefa vive nos gate reports — reconciliação fina fica como dívida não-bloqueante.
+- F0 deploy: toolchain local OK (Helm v3.16.4 no WSL); cluster `.51` (k3s v1.36.4, mongo/redis/rabbit/monitoring prontos, sem Kafka/Keycloak, ns `atlas` com legado Python em CrashLoop por endpoint rs0 inexistente); Postgres `.52` BLOQUEADO (pg_hba/SSL — ação no servidor).
+
+## 2026-11-17 → Correção da working tree + dívidas estruturais (plano aprovado)
+
+- Triagem item a item da tree (31 modificados + 19 untracked; ver relatório da sessão).
+- Restaurados (deleção sem registro de intenção): `templates/aspnet-microservice/.template.config/template.json` (sem ele o `dotnet new` quebra), `specs/000-business-discovery/tasks.md`, `atlas-control-dotnet/.github/workflows/ci.yml` (CI raiz não cobre o Control — sem ele o Control fica sem CI), `test-results/.last-run.json` (ruído gerado).
+- Mantidos deletados (intencionais): 4× `error-context.md` do Playwright (dumps gerados), `deploy/compose/docker-compose.yml` (stale — superseded por `deploy/docker/` + runbook Podman), `atlas-storefront-dotnet.slnx` órfã (23 bytes, zero referências).
+- Trava INV-MONEY-001: `MoneyConformanceTests` (12 casos) prova que as cópias Offers/Orders têm o mesmo contrato Create/Add; `Atlas.Offers.Domain.Tests` 34/34. Consolidação no pacote de contratos segue pendente.
+- Bug real achado no build: `Atlas.Fulfillment.Api` referenciava os contratos com 4 níveis (`MSB9008`, referência silenciosamente ignorada, sem `Atlas.Contracts.Grpc.dll` no output) — corrigido para 5 níveis como os siblings; build 0 warnings/0 errors, dll presente. `Atlas.Storefront.slnx` e `Atlas.Control.slnx` buildam limpos.
+- Fatias WIP validadas sem infra: Gateway.Tests 5/5, Assistant 13/13, Checkout.Application 18/18, Orders 9/9. `MongoWorkerLeaseTests` (novo) exige replica set local (`127.0.0.1:27017/rs0`, ausente neste host) — pendente de compose/Podman up, mesma classe dos demais testes de integração.
+- Não commitado (decisão de publicação do dono): tree organizada, nada staged/committado nesta sessão.
+
+## 2026-11-18 → Sessão VM .51 (k8s1@192.168.1.51, k3s v1.36.4 Ready)
+
+- Acesso: usuário é `k8s1` (não `k8s`); senha inicial recusada para `k8s`, aceita para `k8s1`.
+- Estado encontrado (diverge do registrado): `dotnet-atlas` com 14 pods **Running** via Helm (`dotnet-atlas` rev 9 + `dotnet-control` rev 2, ambos deployados hoje); `kafka` (1 broker, 21h) e `keycloak` (22h) existem com realm `atlas` (200 no well-known); PG `.52:5432` TCP aberto (auth segue pendente).
+- `MongoWorkerLeaseTests` 3/3 PASS contra o rs0 real do cluster via tunnel (conn com auth via `ATLAS_TEST_MONGO_CONN`; default local sem auth preservado — override test-only no arquivo novo). Falha inicial era só auth (`Command update requires authentication`), não lógica.
+- Bug de deploy real: faltavam `atlas.orders.v1` e `atlas.payments.v1` no Kafka (contrato AsyncAPI exige 5; existiam 3) — notifications worker logava `Subscribed topic not available: atlas.orders.v1` em loop. Tópicos criados (1 partição, RF 1, igual aos existentes); após `rollout restart`, startup limpo sem ConsumeException. Projections worker aplicando eventos live (offers/inventory).
+- Sem ingress (só ClusterIP); `atlas` legado (Python) segue CrashLoop — fora do escopo .NET. Túneis temporários fechados ao fim da sessão.
+
+## 2026-11-18 → Sessão servidor .52 (spsql@192.168.1.52, PG 18.3)
+
+- Credenciais inventariadas em `~/pg_credentials.md` (+ `pg_criacao_bancos.md`, `pg_pgvector.md`): modelo `app_owner` (NOLOGIN, owner) / `db_admin` (DDL via `SET ROLE`) / `app_service` (CRUD) — mesmo padrão dev-only do restante do homelab.
+- Bloqueio PG **RESOLVIDO na prática**: `pg_hba` libera `app_service` e `db_admin` de `192.168.1.0/24` (scram-sha-256); keycloak tem DB+user próprios. DB `atlas_read` existe com as 4 views de projeção (`app_owner`): 7 produtos / 4 ofertas / 4 posições / 17 eventos processados. Gateway e projections apontam para `192.168.1.52:5432/atlas_read` — lado de leitura CQRS live no cluster. (SSL server=on snakeoil; clientes usam `SSL Mode=Disable` e funciona.)
+- Pendente: `appdb` contém só `app.teste_vetores` (pgvector); nada do Atlas lá — correto, Atlas usa `atlas_read`.
+
+## 2026-11-18 → Auditoria apps repo × cluster (separação ansible×monorepo)
+
+- Convenção do dono: só infra de serviços no `homelab-secure-edge-ansible/`; aplicações no monorepo.
+- No cluster: 14 pods Running (Helm `dotnet-atlas` rev 9 + `dotnet-control` rev 2); wiring completo (mongo com auth, PG `.52/atlas_read`, Kafka 5 tópicos, Keycloak realm `atlas`, Rabbit); dados live (7/4/4/17).
+- Faltas no repo: `values-prod.yaml` (×2), `gateway-route.yaml`, `vitrine-route.yaml`, `deploy/docker/` (4 Dockerfiles), `.dockerignore` — todos UNTRACKED (deploy feito com fonte fora do git). Secrets `atlas-data`/`atlas-hmac` só existem no cluster (criação imperativa, sem manifest). HTTPRoutes nunca aplicadas (`kubectl get httproute -A` vazio); DNS `home.arpa` NXDOMAIN no resolver do nó (verificar na LAN). Pipeline de build das imagens `local-f3` não documentado/reproduzível.
+
+## 2026-11-18 → DNS + rotas externas validados
+
+- Dono registrou no roteador: `gateway.home.arpa`, `vitrine.home.arpa`, `keycloak.home.arpa` → `192.168.1.51` (confere com a rota do Keycloak no ansible).
+- Achado: os HTTPRoutes já existiam no cluster (apply retornou `configured`, não `created`) — faltava só o DNS. Ambos `Accepted=True, Programmed=True`.
+- E2E externo real: `https://vitrine.home.arpa/` → 200 com redirect para `/pt-BR` (i18n); `https://gateway.home.arpa/api/catalog/products` → JSON real de produtos (cadeia Traefik→gateway→PG `.52` íntegra). 301 em HTTP puro é o redirect para HTTPS do Traefik, esperado.

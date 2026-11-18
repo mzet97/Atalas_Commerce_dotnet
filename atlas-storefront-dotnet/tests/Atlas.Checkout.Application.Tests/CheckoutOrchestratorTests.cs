@@ -277,4 +277,60 @@ public sealed class CheckoutOrchestratorTests
         Assert.Equal(0, f.Inventory.ReserveCalls);
         Assert.Empty(f.Sagas.Items);
     }
+
+    /// <summary>
+    /// REGRESSÃO (cluster .51, E2E real): MongoOrdersStore.InsertAsync é insert-only —
+    /// re-salvar o pedido mutado em memória NÃO persiste (duplicata 11000 ignorada).
+    /// A confirmação precisa do CAS ConfirmOrderAsync; sem ele o pedido fica
+    /// PendingPayment no banco para sempre (saga Confirmed, pedido não).
+    /// Este fake espelha o store real: snapshot por escrita, insert ignora duplicata,
+    /// transição só via CAS com guarda de estado.
+    /// </summary>
+    private sealed class FaithfulOrdersStore : IOrdersStore
+    {
+        public Dictionary<string, OrderState> Persisted { get; } = new();
+        public int ConfirmCalls { get; private set; }
+
+        public Task SaveAsync(Order order, CancellationToken ct)
+        {
+            // insert-only: duplicata NÃO sobrescreve (Mongo 11000 ignorado)
+            Persisted.TryAdd(order.Id.Value.ToString(), order.State);
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ConfirmOrderAsync(Guid orderId, string paymentReference, CancellationToken ct)
+        {
+            ConfirmCalls++;
+            var key = orderId.ToString();
+            if (Persisted.TryGetValue(key, out var s) && s == OrderState.PendingPayment)
+            {
+                Persisted[key] = OrderState.Confirmed;
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> MarkReconciliationRequiredAsync(Guid orderId, string reason, CancellationToken ct) => Task.FromResult(true);
+        public Task<bool> MarkPaymentFailedAsync(Guid orderId, string reason, CancellationToken ct) => Task.FromResult(true);
+    }
+
+    [Fact]
+    public async Task Fluxo_feliz_persiste_Confirmed_no_store_transacional()
+    {
+        var sagas = new InMemoryStore<CheckoutSaga>();
+        var orders = new FaithfulOrdersStore();
+        var payments = new InMemoryStore<PaymentIntent>();
+        var quotes = new FakeQuoteStore();
+        quotes.Seed(TimeSpan.FromMinutes(10));
+        var released = new List<string>();
+        var orchestrator = new CheckoutOrchestrator(
+            new SagaStoreAdapter(sagas), orders,
+            new PaymentsStoreAdapter(payments), quotes, new FakeInventory(stock: 5, released), new FakePsp("APPROVED"));
+
+        var result = await orchestrator.SubmitAsync(Cmd("chk-persist", quotes.DefaultId), CancellationToken.None);
+
+        Assert.Equal(CheckoutResultStatus.Confirmed, result.Status);
+        Assert.Equal(1, orders.ConfirmCalls); // confirmação usa o CAS, não re-Save
+        Assert.Equal(OrderState.Confirmed, orders.Persisted[result.OrderId!]);
+    }
 }

@@ -44,3 +44,29 @@ intent não capturado → 409 (nunca refunda sem CAPTURED — coerência INV-PAY
   como smoke manual (os 3 aceites do gate cobertos por testes integração direta)
 - refund idempotência in-memory (store persistente: SPEC-006+); PSP fake sempre REFUNDED
 - fulfillment sem projection para view (timeline do cliente via API direta no M6)
+
+## 5. Runbook DLQ / replay (recuperado na F1 2026-11-16 a partir das evidências §§1-4)
+
+**Topologia provada no M6:** fila de notificações (quorum) → retry com TTL 3s (backoff, tentativas 1–2) → `notifications.dlq` na 3ª falha; `notification_key` com índice único no Mongo garante exatamente-1-envio (8 concorrentes → 1 envio; restart do worker não reenvia).
+
+```bash
+# 1. Inspecionar profundidade da DLQ (management API do RabbitMQ)
+curl -su "$RABBIT_USER:$RABBIT_PASS" \
+  "http://$RABBIT_HOST:15672/api/queues/%2F/notifications.dlq" | jq '{messages, message_stats}'
+
+# 2. Amostrar 1 mensagem poison p/ diagnóstico (sem ack = sem remover)
+curl -su "$RABBIT_USER:$RABBIT_PASS" -H 'content-type: application/json' \
+  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}' \
+  "http://$RABBIT_HOST:15672/api/queues/%2F/notifications.dlq/get" | jq .
+
+# 3. Replay após corrigir a causa: republicar na fila de origem com a MESMA notification_key
+#    (dedup transacional impede duplo envio — claim repetida retorna False)
+#    Via shovel temporário management UI (Admin → Shovel: notifications.dlq → notifications, delete-after=queue-length)
+#    ou via worker de replay dedicado que consome a DLQ e republica.
+
+# 4. Purga SOMENTE após replay confirmado e backup (irreversível):
+curl -su "$RABBIT_USER:$RABBIT_PASS" -X DELETE \
+  "http://$RABBIT_HOST:15672/api/queues/%2F/notifications.dlq/contents"
+```
+
+**Alertas mínimos:** `notifications.dlq.messages > 0` por > 5min → página; taxa de retry (tentativas 1–2) em alta → checar consumer/smoke do Notifications worker. **Nunca** deletar a DLQ sem antes drenar via replay auditado (cada replay gera entrada de auditoria com `correlation_id` original).

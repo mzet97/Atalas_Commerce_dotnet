@@ -7,5 +7,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Services/Offers/Atlas.Offers.Domain/Atlas.Offers.Domain.csproj" />
+    <!-- Trava de conformidade INV-MONEY-001 (test-only): referencia Orders.Domain SOMENTE
+         para provar que as duas cópias de Money têm o mesmo contrato até a consolidação
+         no pacote de contratos versionado. Não é acoplamento de produção. -->
+    <ProjectReference Include="../../src/Services/Orders/Atlas.Orders.Domain/Atlas.Orders.Domain.csproj" />
   </ItemGroup>
 </Project>

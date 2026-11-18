@@ -65,6 +65,7 @@
     <Project Path="tests/Atlas.Workers.ProjectionTests/Atlas.Workers.ProjectionTests.csproj" />
     <Project Path="tests/Atlas.Workers.Notifications.Tests/Atlas.Workers.Notifications.Tests.csproj" />
     <Project Path="tests/Atlas.ShoppingAssistant.Tests/Atlas.ShoppingAssistant.Tests.csproj" />
+    <Project Path="tests/Atlas.Gateway.Tests/Atlas.Gateway.Tests.csproj" />
     <Project Path="tests/SimulatedPsp.Tests/SimulatedPsp.Tests.csproj" />
   </Folder>
   <Project Path="../atlas-platform-contracts-dotnet/src/Atlas.Contracts.Grpc/Atlas.Contracts.Grpc.csproj" />

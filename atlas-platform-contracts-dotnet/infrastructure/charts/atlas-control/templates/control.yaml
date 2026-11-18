@@ -17,7 +17,30 @@ spec:
       containers:
         - name: app
           image: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
+          imagePullPolicy: IfNotPresent
           ports: [{ containerPort: {{ $cfg.containerPort }} }]
+          env:
+            {{- range $cfg.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range $cfg.secrets }}
+            - name: {{ .envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+          {{- if and $cfg.probes $cfg.probes.enabled }}
+          livenessProbe:
+            httpGet: { path: {{ $cfg.probes.path }}, port: {{ $cfg.containerPort }} }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: {{ $cfg.probes.path }}, port: {{ $cfg.containerPort }} }
+            initialDelaySeconds: 8
+            periodSeconds: 5
+          {{- end }}
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
 ---
 apiVersion: v1
@@ -27,7 +50,7 @@ metadata:
 spec:
   selector: { app: atlas-control-{{ $name }} }
   ports: [{ port: 80, targetPort: {{ $cfg.containerPort }} }]
-{{- if $cfg.hpa }}
+{{- if and $cfg.hpa $cfg.hpa.enabled }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

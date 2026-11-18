@@ -147,7 +147,11 @@ public sealed class CheckoutOrchestrator(
                 await paymentsStore.SaveAsync(intent, ct);
                 saga.MarkPaymentAuthorized(intent.Id.Value.ToString(), DateTimeOffset.UtcNow);
                 var confirmed = order.TryConfirm(intent.Id.Value.ToString(), [reservationId], DateTimeOffset.UtcNow);
-                await ordersStore.SaveAsync(order, ct);
+                // REGRESSÃO cluster .51: SaveAsync é insert-only (dup 11000 ignorado) — re-salvar
+                // o pedido mutado NÃO persiste. A confirmação exige o CAS ConfirmOrderAsync
+                // (guard PendingPayment + outbox), senão o pedido fica PendingPayment para sempre.
+                if (confirmed)
+                    confirmed = await ordersStore.ConfirmOrderAsync(order.Id.Value, providerRef ?? intent.Id.Value.ToString(), ct);
                 saga.MarkConfirmed(DateTimeOffset.UtcNow);
                 await sagaStore.SaveAsync(saga, ct);
                 return confirmed
