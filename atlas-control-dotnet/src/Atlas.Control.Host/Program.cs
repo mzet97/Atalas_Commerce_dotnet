@@ -16,6 +16,9 @@ builder.Services.AddHealthChecks();
 builder.Services.AddOpenApi();
 
 // ---------- IAM (ADR-0007): JWT real do Keycloak, realm atlas ----------
+// Split-horizon Keycloak: browser recebe iss da URL pública, workloads internas usam a de serviço.
+// Mesmo realm/mesmas chaves — aceitar os dois emissores (tokens do túnel local e de testes seguem cobertos pelo Authority configurado).
+var keycloakPublicAuthority = builder.Configuration["Keycloak:PublicAuthority"] ?? "https://keycloak.home.arpa/realms/atlas";
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -26,7 +29,7 @@ builder.Services
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = o.Authority,
+            ValidIssuers = new[] { o.Authority, keycloakPublicAuthority },
             ValidateAudience = false, // Keycloak: azp no lugar de aud; roles validadas por policy
             ValidateLifetime = true,
             NameClaimType = "sub",
@@ -90,7 +93,7 @@ app.Use(async (context, next) =>
     await next(context);
     if (context.Response.StatusCode == StatusCodes.Status403Forbidden)
     {
-        var sub = context.User.FindFirst("sub")?.Value ?? context.User.Identity?.Name ?? "anonymous";
+        var sub = context.User.FindFirst("sub")?.Value ?? context.User.FindFirst("preferred_username")?.Value ?? context.User.Identity?.Name ?? "anonymous";
         var route = context.Request.Path.Value ?? "?";
         try
         {

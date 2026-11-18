@@ -2,6 +2,11 @@ import { Injectable, inject } from '@angular/core';
 import { KeycloakService } from '../auth/keycloak.service';
 
 export type ApprovalState = 'Requested' | 'Approved' | 'Rejected' | 'Dispatched' | 'Executed' | 'Failed';
+export interface PublishApproval {
+  id: string; requestedBy: string; productId: string; expectedVersion: number;
+  marketId: string; justification: string; state: ApprovalState; decidedBy?: string;
+  rejectionReason?: string; createdAtUtc: string; decidedAtUtc?: string;
+}
 export interface OperationApproval {
   id: string; requestedBy: string; action: string; subject: string;
   justification: string; state: ApprovalState; decidedBy?: string;
@@ -60,6 +65,40 @@ export class ControlApiService {
   }
   dispatch(id: string, input: { requestId: string; delta: number; reason?: string }): Promise<{ state: string }> {
     return this.call(`/modules/approvals/${id}/dispatch`, { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  // ---- publicações de catálogo (four-eyes M2) ----
+  async listPublications(state?: string, page = 1): Promise<Page<PublishApproval>> {
+    const q = new URLSearchParams({ page: String(page), pageSize: '20' });
+    if (state) q.set('state', state);
+    const p = await this.call<Page<Record<string, unknown>>>(`/approvals?${q}`);
+    return { ...p, items: p.items.map((i) => this.mapPublish(i)) };
+  }
+  async getPublication(id: string): Promise<PublishApproval> {
+    return this.mapPublish(await this.call<Record<string, unknown>>(`/approvals/${id}`));
+  }
+  private mapPublish(d: Record<string, unknown>): PublishApproval {
+    const state = typeof d['state'] === 'number' ? (STATE_NAMES[d['state'] as number] ?? 'Requested') : (d['state'] as ApprovalState ?? 'Requested');
+    return {
+      id: String(d['id'] ?? ''), requestedBy: String(d['requestedBy'] ?? ''),
+      productId: String(d['productId'] ?? ''), expectedVersion: Number(d['expectedVersion'] ?? 0),
+      marketId: String(d['marketId'] ?? ''), justification: String(d['justification'] ?? ''),
+      state, decidedBy: d['decidedBy'] as string | undefined,
+      rejectionReason: d['rejectionReason'] as string | undefined,
+      createdAtUtc: String(d['createdAtUtc'] ?? ''), decidedAtUtc: d['decidedAtUtc'] as string | undefined,
+    };
+  }
+  requestPublish(input: { productId: string; expectedVersion: number; marketId: string; justification: string }): Promise<{ approvalId: string }> {
+    return this.call('/approvals/requests', { method: 'POST', body: JSON.stringify(input) });
+  }
+  decidePublish(id: string, decision: 'APPROVED' | 'REJECTED', reason?: string): Promise<{ state: string; approvalToken?: string }> {
+    return this.call(`/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ decision, reason }) });
+  }
+  dispatchPublish(id: string): Promise<{ state: string }> {
+    return this.call(`/approvals/${id}/dispatch`, { method: 'POST', body: JSON.stringify({}) });
+  }
+  publishStateName(n: unknown): string {
+    return typeof n === 'number' ? (STATE_NAMES[n] ?? 'Requested') : String(n ?? 'Requested');
   }
 
   // ---- auditoria (REQ-ADM-003) ----

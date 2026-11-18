@@ -28,6 +28,10 @@ export class KeycloakService {
       const ok = await this.kc.init({
         onLoad: 'check-sso',
         pkceMethod: 'S256',
+        // SSO silencioso em reload/deep-link (sem round-trip): iframe oculto; se a
+        // sessão expirou, cai no fluxo normal com redirect (guard → /login).
+        silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
+        silentCheckSsoFallback: false,
         checkLoginIframe: false,
         redirectUri: window.location.origin + '/',
       });
@@ -38,8 +42,10 @@ export class KeycloakService {
     }
   }
 
-  login(): void {
-    this.kc.login({ redirectUri: window.location.origin + '/' });
+  login(redirectUri?: string): void {
+    let target = redirectUri ?? '/';
+    try { target = sessionStorage.getItem('postLoginRedirect') ?? target; } catch { /* noop */ }
+    this.kc.login({ redirectUri: window.location.origin + target });
   }
 
   logout(): void {

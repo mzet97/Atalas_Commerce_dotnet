@@ -26,6 +26,20 @@ public sealed class ApprovalsModule(
         endpoints.MapGet("/modules/approvals/status", () =>
             Results.Ok(new { module = Name, fourEyes = true }));
 
+        // ---- publicação de catálogo: lista + detalhe (sem policy específica, como
+        // /modules/approvals — escrita segue exigindo catalog_editor/approver) ----
+        endpoints.MapGet("/approvals", async (string? state, int? page, int? pageSize, CancellationToken ct) =>
+        {
+            var (items, total) = await store.ListApprovalsAsync(state, page ?? 1, pageSize ?? 50, ct);
+            return Results.Ok(new { items, total, page = page ?? 1, pageSize = Math.Clamp(pageSize ?? 50, 1, 200) });
+        });
+
+        endpoints.MapGet("/approvals/{id}", async (string id, CancellationToken ct) =>
+        {
+            var approval = await store.GetAsync(Guid.Parse(id), ct);
+            return approval is null ? Results.NotFound() : Results.Ok(approval);
+        });
+
         endpoints.MapPost("/approvals/requests", "role:catalog_editor", async (HttpContext http, [Microsoft.AspNetCore.Mvc.FromBody] RequestApprovalRequest req, CancellationToken ct) =>
         {
             var sub = Sub(http);
@@ -96,7 +110,10 @@ public sealed class ApprovalsModule(
     }
 
     private static string Sub(HttpContext http) =>
-        http.User.FindFirst("sub")?.Value ?? http.User.Identity?.Name ?? "anonymous";
+        http.User.FindFirst("sub")?.Value
+        ?? http.User.FindFirst("preferred_username")?.Value
+        ?? http.User.Identity?.Name
+        ?? "anonymous";
 
     private static string Corr(IHasCorrelation req) => string.IsNullOrWhiteSpace(req.CorrelationId) ? Guid.NewGuid().ToString() : req.CorrelationId!;
 

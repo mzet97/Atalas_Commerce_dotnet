@@ -12,6 +12,7 @@ import { KeycloakService } from './auth/keycloak.service';
     <nav>
       <a routerLink="/approvals">Aprovações</a>
       <a routerLink="/approvals-new">Solicitar ajuste</a>
+      <a routerLink="/publications">Publicações</a>
       <a routerLink="/audit">Auditoria</a>
       @if (kc.hasRole('iam_admin')) { <a routerLink="/grants">Grants</a> }
       @if (kc.hasRole('approver')) { <a routerLink="/refunds">Reembolsos</a> }

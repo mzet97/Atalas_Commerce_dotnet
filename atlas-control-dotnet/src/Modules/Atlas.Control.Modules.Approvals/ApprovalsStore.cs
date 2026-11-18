@@ -42,6 +42,23 @@ public sealed class ApprovalsStore
         return doc?.ToDomain();
     }
 
+    /// <summary>Listagem server-side paginada (mesmo padrão de /modules/approvals).</summary>
+    public async Task<(IReadOnlyList<Approval> Items, long Total)> ListApprovalsAsync(
+        string? state, int page, int pageSize, CancellationToken ct)
+    {
+        var filter = string.IsNullOrWhiteSpace(state)
+            ? Builders<ApprovalDoc>.Filter.Empty
+            : Builders<ApprovalDoc>.Filter.Eq(d => d.State,
+                Enum.Parse<ApprovalState>(state, true));
+        var total = await Approvals().CountDocumentsAsync(filter, cancellationToken: ct);
+        var docs = await Approvals().Find(filter)
+            .SortByDescending(d => d.CreatedAtUtc)
+            .Skip((Math.Max(page, 1) - 1) * Math.Clamp(pageSize, 1, 200))
+            .Limit(Math.Clamp(pageSize, 1, 200))
+            .ToListAsync(ct);
+        return ([.. docs.Select(d => d.ToDomain())], total);
+    }
+
     public async Task SaveAsync(Approval approval, CancellationToken ct)
     {
         // ToDomain não hidrata CreatedAt no ctor → preservar do doc original
