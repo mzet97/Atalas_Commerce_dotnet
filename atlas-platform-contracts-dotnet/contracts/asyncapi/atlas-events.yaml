@@ -27,6 +27,7 @@ channels:
     messages:
       offer.published: { $ref: '#/components/messages/domainEvent' }
       price.changed: { $ref: '#/components/messages/domainEvent' }
+      offer.deactivated: { $ref: '#/components/messages/domainEvent' }
   atlas.inventory.v1:
     address: atlas.inventory.v1
     messages:

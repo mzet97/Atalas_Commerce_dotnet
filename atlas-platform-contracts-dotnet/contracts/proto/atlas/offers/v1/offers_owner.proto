@@ -9,6 +9,11 @@ option csharp_namespace = "Atlas.Contracts.Offers.V1";
 service OffersOwnerService {
   rpc PublishOffer(PublishOfferRequest) returns (PublishOfferResponse);
   rpc GetActiveOffer(GetActiveOfferRequest) returns (GetActiveOfferResponse);
+  // Gestão pelo Control (ERP master data): reprice com CAS + desativação.
+  rpc UpdateOfferPrice(UpdateOfferPriceRequest) returns (UpdateOfferPriceResponse);
+  rpc DeactivateOffer(DeactivateOfferRequest) returns (DeactivateOfferResponse);
+  // Grade do Control: ofertas ativas com filtro de mercado (leitura operacional).
+  rpc ListActiveOffers(ListActiveOffersRequest) returns (ListActiveOffersResponse);
 }
 
 message PublishOfferRequest {
@@ -46,4 +51,60 @@ message GetActiveOfferResponse {
   int64 price_minor = 2;
   string valid_to = 3;
   int64 aggregate_version = 4;
+}
+
+message UpdateOfferPriceRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string offer_id = 3;
+  int64 expected_version = 4; // concorrência otimista
+  int64 price_minor = 5;      // mesma moeda da oferta (troca de moeda = nova oferta)
+  string correlation_id = 6;
+}
+
+message UpdateOfferPriceResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string event_id = 3;        // PriceChanged
+  string reason = 4;
+}
+
+message DeactivateOfferRequest {
+  string request_id = 1;
+  string actor_sub = 2;
+  string offer_id = 3;
+  int64 expected_version = 4;
+  string correlation_id = 5;
+}
+
+message DeactivateOfferResponse {
+  bool accepted = 1;
+  int64 aggregate_version = 2;
+  string event_id = 3;        // OfferDeactivated
+  string reason = 4;
+}
+
+message OfferView {
+  string offer_id = 1;
+  string sku_id = 2;
+  string seller_id = 3;
+  string market_id = 4;
+  string channel = 5;
+  string currency = 6;
+  int64 price_minor = 7;
+  int64 list_price_minor = 8;
+  int64 aggregate_version = 9;
+  string valid_to = 10;
+}
+
+message ListActiveOffersRequest {
+  string market_id = 1; // vazio = todos
+  string sku_id = 2;    // vazio = todos
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ListActiveOffersResponse {
+  repeated OfferView items = 1;
+  int64 total = 2;
 }
