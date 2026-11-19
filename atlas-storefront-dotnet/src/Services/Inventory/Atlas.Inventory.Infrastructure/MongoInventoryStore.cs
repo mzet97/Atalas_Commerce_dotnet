@@ -197,15 +197,90 @@ public sealed partial class MongoInventoryStore : IInventoryStore
         }
     }
 
+    /// <summary>
+    /// Recebimento de mercadoria em transação: Inc on_hand + ledger + outbox
+    /// Stock.ReceivedV1 (a projeção SOMA a quantidade — sem este evento a view
+    /// jamais refletia entradas; mesmo padrão transacional do adjust).
+    /// </summary>
+    public async Task<(bool Ok, long NewVersion)> ReceiveStockInTransactionAsync(
+        StockKey key, int quantity, string reason, string correlationId, string actorSub, CancellationToken ct)
+    {
+        var id = key.ToString();
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var doc = await Positions().Find(s, p => p.Id == id).FirstOrDefaultAsync(token);
+            if (doc is null) return (false, 0);
+            var newVersion = doc.Version + 1;
+            var result = await Positions().UpdateOneAsync(s,
+                Builders<PositionDoc>.Filter.And(
+                    Builders<PositionDoc>.Filter.Eq(p => p.Id, id),
+                    Builders<PositionDoc>.Filter.Eq(p => p.Version, doc.Version)),
+                Builders<PositionDoc>.Update
+                    .Inc(p => p.OnHand, quantity)
+                    .Set(p => p.Version, newVersion),
+                cancellationToken: token);
+            if (result.ModifiedCount != 1) return (false, doc.Version);
+            await Movements().InsertOneAsync(s, MovementDoc.FromLedger(
+                key, quantity, $"receive:{reason}", actorSub, correlationId), cancellationToken: token);
+            await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
+                Guid.NewGuid(), "Stock.ReceivedV1", id, correlationId,
+                new BsonDocument
+                {
+                    ["position_key"] = id,
+                    ["quantity"] = quantity,
+                    ["version"] = newVersion,
+                    ["reason"] = reason,
+                }, newVersion), cancellationToken: token);
+            return (true, newVersion);
+        }, cancellationToken: ct);
+    }
+
+    /// <summary>
+    /// Confirmação = VENDA: reserva Active→Confirmed + baixa transacional
+    /// (reserved e on_hand) + ledger + outbox Reservation.ConfirmedV1.
+    /// Idempotente por pedido: já-Confirmed com o MESMO orderId retorna true
+    /// (reconciliador pode repetir após queda entre commit e resposta).
+    /// </summary>
     public async Task<bool> ConfirmReservationAsync(Guid reservationId, string orderId, CancellationToken ct)
     {
-        var result = await Reservations().UpdateOneAsync(
-            r => r.Id == reservationId && r.Status == ReservationStatus.Active,
-            Builders<ReservationDoc>.Update
-                .Set(r => r.Status, ReservationStatus.Confirmed)
-                .Set(r => r.OrderId, orderId)
-                .Inc(r => r.Version, 1), cancellationToken: ct);
-        return result.ModifiedCount == 1;
+        var reservation = await Reservations().Find(r => r.Id == reservationId).FirstOrDefaultAsync(ct);
+        if (reservation is null) return false;
+        if (reservation.Status == ReservationStatus.Confirmed)
+            return string.Equals(reservation.OrderId, orderId, StringComparison.Ordinal);
+        if (reservation.Status != ReservationStatus.Active) return false;
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var updated = await Reservations().UpdateOneAsync(s,
+                r => r.Id == reservationId && r.Status == ReservationStatus.Active,
+                Builders<ReservationDoc>.Update
+                    .Set(r => r.Status, ReservationStatus.Confirmed)
+                    .Set(r => r.OrderId, orderId)
+                    .Inc(r => r.Version, 1), cancellationToken: token);
+            if (updated.ModifiedCount != 1) return false;
+            foreach (var line in reservation.Lines)
+            {
+                var filter = Builders<PositionDoc>.Filter.Eq(p => p.Id, line.Key.ToString());
+                var update = Builders<PositionDoc>.Update
+                    .Inc(p => p.Reserved, -line.Quantity)
+                    .Inc(p => p.OnHand, -line.Quantity)
+                    .Inc(p => p.Version, 1);
+                await Positions().UpdateOneAsync(s, filter, update, cancellationToken: token);
+                await Movements().InsertOneAsync(s, MovementDoc.FromLedger(
+                    ReservationDoc.ParseKey(line.Key), -line.Quantity, $"consume:{orderId}", reservation.IdempotencyKey, orderId), cancellationToken: token);
+            }
+            await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
+                Guid.NewGuid(), "Reservation.ConfirmedV1", reservationId.ToString(), orderId,
+                new BsonDocument
+                {
+                    ["reservation_id"] = reservationId.ToString(),
+                    ["order_id"] = orderId,
+                    ["lines"] = new BsonArray(reservation.Lines.Select(l =>
+                        new BsonDocument { ["key"] = l.Key.ToString(), ["quantity"] = l.Quantity })),
+                }, reservation.Version + 1 /* Inc da txn */), cancellationToken: token);
+            return true;
+        }, cancellationToken: ct);
     }
 
     public async Task<bool> ReleaseReservationAsync(Guid reservationId, string reason, string correlationId, string actorSub, CancellationToken ct)
@@ -214,23 +289,62 @@ public sealed partial class MongoInventoryStore : IInventoryStore
         if (reservation is null) return false;
         using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
         return await session.WithTransactionAsync(async (s, token) =>
+            await ReleaseCoreAsync(s, reservation, Atlas.Inventory.Domain.ReservationStatus.Released,
+                reason, correlationId, actorSub, token), cancellationToken: ct);
+    }
+
+    /// <summary>
+    /// Backstop do ledger: libera em lote as reservas Active vencidas (status Expired,
+    /// evento ReleasedV1 reason=expired para a projeção devolver o saldo).
+    /// Confirmadas nunca entram aqui. Retorna quantas foram liberadas.
+    /// </summary>
+    public async Task<int> ReapExpiredReservationsAsync(DateTimeOffset nowUtc, int take, CancellationToken ct)
+    {
+        var expired = await Reservations().Find(
+            r => r.Status == Atlas.Inventory.Domain.ReservationStatus.Active && r.ExpiresAtUtc <= nowUtc)
+            .Limit(take).ToListAsync(ct);
+        var freed = 0;
+        foreach (var reservation in expired)
         {
-            var updated = await Reservations().UpdateOneAsync(s,
-                r => r.Id == reservationId && (r.Status == ReservationStatus.Active || r.Status == ReservationStatus.Confirmed),
-                Builders<ReservationDoc>.Update.Set(r => r.Status, ReservationStatus.Released).Inc(r => r.Version, 1), cancellationToken: token);
-            if (updated.ModifiedCount != 1) return false;
-            foreach (var line in reservation.Lines)
+            using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+            var ok = await session.WithTransactionAsync(async (s, token) =>
+                await ReleaseCoreAsync(s, reservation, Atlas.Inventory.Domain.ReservationStatus.Expired,
+                    "expired", reservation.IdempotencyKey, "reaper", token), cancellationToken: ct);
+            if (ok) freed++;
+        }
+        return freed;
+    }
+
+    private async Task<bool> ReleaseCoreAsync(MongoDB.Driver.IClientSessionHandle s,
+        ReservationDoc reservation, Atlas.Inventory.Domain.ReservationStatus target,
+        string reason, string correlationId, string actorSub, CancellationToken token)
+    {
+        var allowed = target == Atlas.Inventory.Domain.ReservationStatus.Expired
+            ? reservation.Status == Atlas.Inventory.Domain.ReservationStatus.Active
+            : reservation.Status == Atlas.Inventory.Domain.ReservationStatus.Active
+                || reservation.Status == Atlas.Inventory.Domain.ReservationStatus.Confirmed;
+        if (!allowed) return false;
+        var updated = await Reservations().UpdateOneAsync(s,
+            r => r.Id == reservation.Id && r.Status == reservation.Status,
+            Builders<ReservationDoc>.Update.Set(r => r.Status, target).Inc(r => r.Version, 1), cancellationToken: token);
+        if (updated.ModifiedCount != 1) return false;
+        foreach (var line in reservation.Lines)
+        {
+            var filter = Builders<PositionDoc>.Filter.Eq(p => p.Id, line.Key.ToString());
+            var update = Builders<PositionDoc>.Update.Inc(p => p.Reserved, -line.Quantity).Inc(p => p.Version, 1);
+            await Positions().UpdateOneAsync(s, filter, update, cancellationToken: token);
+            await Movements().InsertOneAsync(s, MovementDoc.FromLedger(ReservationDoc.ParseKey(line.Key), -line.Quantity, $"release:{reason}", actorSub, correlationId), cancellationToken: token);
+        }
+        await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
+            Guid.NewGuid(), "Reservation.ReleasedV1", reservation.Id.ToString(), correlationId,
+            new BsonDocument
             {
-                var filter = Builders<PositionDoc>.Filter.Eq(p => p.Id, line.Key.ToString());
-                var update = Builders<PositionDoc>.Update.Inc(p => p.Reserved, -line.Quantity).Inc(p => p.Version, 1);
-                await Positions().UpdateOneAsync(s, filter, update, cancellationToken: token);
-                await Movements().InsertOneAsync(s, MovementDoc.FromLedger(ReservationDoc.ParseKey(line.Key), -line.Quantity, $"release:{reason}", actorSub, correlationId), cancellationToken: token);
-            }
-            await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
-                Guid.NewGuid(), "Reservation.ReleasedV1", reservationId.ToString(), correlationId,
-                new BsonDocument { ["reservation_id"] = reservationId.ToString(), ["reason"] = reason }, reservation.Version + 1 /* Inc da txn */), cancellationToken: token);
-            return true;
-        }, cancellationToken: ct);
+                ["reservation_id"] = reservation.Id.ToString(),
+                ["reason"] = reason,
+                ["lines"] = new BsonArray(reservation.Lines.Select(l =>
+                    new BsonDocument { ["key"] = l.Key.ToString(), ["quantity"] = l.Quantity })),
+            }, reservation.Version + 1 /* Inc da txn */), cancellationToken: token);
+        return true;
     }
 
     private sealed class OutOfStockException(string skuId) : Exception(skuId)

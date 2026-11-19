@@ -38,9 +38,10 @@ public sealed class CheckoutOrchestratorTests
         Currency: "BRL",
         Shipping: new OrderShippingAddressDto("BR", "01310-100", "Av. Paulista 1000", "SP"));
 
-    private sealed class FakeInventory(int stock, List<string> released) : IInventoryReservePort
+    private sealed class FakeInventory(int stock, List<string> released, bool commitFails = false) : IInventoryReservePort
     {
         public int ReserveCalls { get; private set; }
+        public List<(string ReservationId, string OrderId)> Committed { get; } = [];
         private int _available = stock;
         public Task<string?> ReserveAsync(string checkoutId, IReadOnlyList<(string SkuId, int Quantity)> lines, CancellationToken ct)
         {
@@ -53,6 +54,12 @@ public sealed class CheckoutOrchestratorTests
         public Task<bool> ReleaseAsync(string reservationId, string reason, CancellationToken ct)
         {
             released.Add(reservationId);
+            return Task.FromResult(true);
+        }
+        public Task<bool> CommitAsync(string reservationId, string orderId, CancellationToken ct)
+        {
+            if (commitFails) return Task.FromResult(false);
+            Committed.Add((reservationId, orderId));
             return Task.FromResult(true);
         }
     }
@@ -234,6 +241,36 @@ public sealed class CheckoutOrchestratorTests
         Assert.Equal(5000, order.Total.AmountMinor);
         Assert.Equal(PaymentIntentState.Captured, f.Payments.Items["chk-ok"].State);
         Assert.Empty(f.Released);
+        // M9-hold: venda baixa a reserva no owner (sem isso o SKU trava em OUT_OF_STOCK)
+        var commit = Assert.Single(f.Inventory.Committed);
+        Assert.Equal(saga.ReservationId, commit.ReservationId);
+        Assert.Equal(saga.OrderId, commit.OrderId);
+    }
+
+    // commit indisponível → pedido segue pago+confirmado, saga Pending para o reconciliador
+    [Fact]
+    public async Task Commit_falho_vira_Pending_sem_desfazer_pedido_pago()
+    {
+        var sagas = new InMemoryStore<CheckoutSaga>();
+        var orders = new InMemoryStore<Order>();
+        var payments = new InMemoryStore<PaymentIntent>();
+        var quotes = new FakeQuoteStore();
+        quotes.Seed(TimeSpan.FromMinutes(10));
+        var released = new List<string>();
+        var inventory = new FakeInventory(stock: 5, released, commitFails: true);
+        var orchestrator = new CheckoutOrchestrator(
+            new SagaStoreAdapter(sagas), new OrdersStoreAdapter(orders),
+            new PaymentsStoreAdapter(payments), quotes, inventory, new FakePsp("APPROVED"));
+
+        var result = await orchestrator.SubmitAsync(Cmd("chk-nocommit", quotes.DefaultId), CancellationToken.None);
+
+        Assert.Equal(CheckoutResultStatus.Pending, result.Status);
+        var saga = await sagas.FindByIdempotencyKeyAsync("chk-nocommit", CancellationToken.None);
+        Assert.Equal(CheckoutSagaState.PendingReconciliation, saga!.State);
+        Assert.Equal("commit-failed", saga.FailureReason);
+        Assert.Empty(inventory.Committed);
+        var order = orders.Items[saga.OrderId!];
+        Assert.Equal(OrderState.Confirmed, order.State); // pedido pago NÃO desfeito
     }
 
     // COM-08/INV-QUOTE-001: quote expirada → rejeita ANTES de reservar (efeito colateral zero)

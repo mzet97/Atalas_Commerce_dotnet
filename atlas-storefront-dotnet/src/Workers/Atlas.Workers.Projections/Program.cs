@@ -29,15 +29,20 @@ using var producer = new ProducerBuilder<string, string>(new ProducerConfig
 var dispatcherCatalog = new OutboxDispatcher(mongoClient.GetDatabase("atlas_catalog"), producer);
 var dispatcherOffers = new OutboxDispatcher(mongoClient.GetDatabase("atlas_offers"), producer);
 var dispatcherInventory = new OutboxDispatcher(mongoClient.GetDatabase("atlas_inventory"), producer);
+var dispatcherOrders = new OutboxDispatcher(mongoClient.GetDatabase("atlas_orders"), producer);
+var dispatcherFulfillment = new OutboxDispatcher(mongoClient.GetDatabase("atlas_fulfillment"), producer);
 
 // consumers por contexto (group id por worker; earliest p/ replay)
 builder.Services.AddHostedService(sp => new ProjectionWorkerHostedService(
     dispatcherCatalog,
     dispatcherOffers,
     dispatcherInventory,
+    dispatcherOrders,
+    dispatcherFulfillment,
     new CatalogProjector(pgConn, "catalog-search-worker"),
     new OffersProjector(pgConn, "offers-view-worker"),
     new InventoryProjector(pgConn, "inventory-view-worker"),
+    new OrdersProjector(pgConn, "orders-view-worker"),
     bootstrap,
     mongoClient));
 
@@ -53,6 +58,7 @@ try
         new TopicSpecification { Name = "atlas.catalog.v1", NumPartitions = 1, ReplicationFactor = 1 },
         new TopicSpecification { Name = "atlas.offers.v1", NumPartitions = 1, ReplicationFactor = 1 },
         new TopicSpecification { Name = "atlas.inventory.v1", NumPartitions = 1, ReplicationFactor = 1 },
+        new TopicSpecification { Name = "atlas.orders.v1", NumPartitions = 1, ReplicationFactor = 1 },
     ]);
 }
 catch (CreateTopicsException)
@@ -71,9 +77,12 @@ public sealed class ProjectionWorkerHostedService(
     OutboxDispatcher dispatcherCatalog,
     OutboxDispatcher dispatcherOffers,
     OutboxDispatcher dispatcherInventory,
+    OutboxDispatcher dispatcherOrders,
+    OutboxDispatcher dispatcherFulfillment,
     CatalogProjector catalogProjector,
     OffersProjector offersProjector,
     InventoryProjector inventoryProjector,
+    OrdersProjector ordersProjector,
     string bootstrap,
     IMongoClient mongoClient) : BackgroundService
 {
@@ -86,7 +95,7 @@ public sealed class ProjectionWorkerHostedService(
             AutoOffsetReset = AutoOffsetReset.Earliest,
             EnableAutoCommit = false,
         }).Build();
-        consumer.Subscribe(["atlas.catalog.v1", "atlas.offers.v1", "atlas.inventory.v1"]);
+        consumer.Subscribe(["atlas.catalog.v1", "atlas.offers.v1", "atlas.inventory.v1", "atlas.orders.v1"]);
 
         var lastDispatch = DateTimeOffset.MinValue;
         while (!stoppingToken.IsCancellationRequested)
@@ -99,6 +108,8 @@ public sealed class ProjectionWorkerHostedService(
                     await dispatcherCatalog.DispatchPendingBatchAsync("catalog.outbox", "catalog", stoppingToken);
                     await dispatcherOffers.DispatchPendingBatchAsync("offers.outbox", "offers", stoppingToken);
                     var inv = await dispatcherInventory.DispatchPendingBatchAsync("inventory.outbox", "inventory", stoppingToken);
+                    await dispatcherOrders.DispatchPendingBatchAsync("orders.outbox", "orders", stoppingToken);
+                    await dispatcherFulfillment.DispatchPendingBatchAsync("fulfillment.outbox", "fulfillment", stoppingToken);
                     if (inv > 0) Console.WriteLine($"[projections] inventory despachados: {inv}");
                     lastDispatch = DateTimeOffset.UtcNow;
                 }
@@ -118,6 +129,7 @@ public sealed class ProjectionWorkerHostedService(
                 var topic = message.Topic;
                 var applied = topic.Contains("catalog") ? await catalogProjector.ApplyBatchAsync([envelope], stoppingToken)
                     : topic.Contains("offers") ? await offersProjector.ApplyBatchAsync([envelope], stoppingToken)
+                    : topic.Contains("orders") ? await ordersProjector.ApplyBatchAsync([envelope], stoppingToken)
                     : await inventoryProjector.ApplyBatchAsync([envelope], stoppingToken);
                 consumer.Commit(message);
                 if (applied > 0)

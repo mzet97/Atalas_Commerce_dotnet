@@ -106,7 +106,10 @@ public sealed partial class CheckoutSaga
 
     public bool MarkPendingReconciliation(string reason, DateTimeOffset nowUtc)
     {
-        if (State != CheckoutSagaState.OrderPlaced) return State == CheckoutSagaState.PendingReconciliation;
+        // commit-failed nasce em PaymentAuthorized (pedido pago+confirmado, falta a baixa);
+        // psp-unknown nasce em OrderPlaced. Ambos reconciliáveis.
+        if (State is not (CheckoutSagaState.OrderPlaced or CheckoutSagaState.PaymentAuthorized))
+            return State == CheckoutSagaState.PendingReconciliation;
         FailureReason = reason;
         State = CheckoutSagaState.PendingReconciliation;
         _stepsApplied.Add($"pending-reconciliation:{reason}:{nowUtc:O}");

@@ -40,11 +40,18 @@ public sealed class CheckoutReconcilerTests
         { Voided.Add(key); return Task.FromResult(true); }
     }
 
-    private sealed class FakeRelease : IInventoryReservePort
+    private sealed class FakeRelease(bool commitFails = false) : IInventoryReservePort
     {
         public List<string> Released { get; } = [];
+        public List<(string ReservationId, string OrderId)> Committed { get; } = [];
         public Task<string?> ReserveAsync(string checkoutId, IReadOnlyList<(string SkuId, int Quantity)> lines, CancellationToken ct) => Task.FromResult<string?>(null);
         public Task<bool> ReleaseAsync(string reservationId, string reason, CancellationToken ct) { Released.Add(reservationId); return Task.FromResult(true); }
+        public Task<bool> CommitAsync(string reservationId, string orderId, CancellationToken ct)
+        {
+            if (commitFails) return Task.FromResult(false);
+            Committed.Add((reservationId, orderId));
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class FakePspReconciliation(ReconciliationOutcome outcome) : IPspReconciliationPort
@@ -78,6 +85,33 @@ public sealed class CheckoutReconcilerTests
         Assert.Single(recon.Confirmed);
         Assert.Equal(CheckoutSagaState.Confirmed, sagaStore.All[0].State);
         Assert.Empty(release.Released); // pago → reserva NÃO liberada
+        var commit = Assert.Single(release.Committed); // M9-hold: pago → reserva BAIXADA
+        Assert.Equal("res-1", commit.ReservationId);
+    }
+
+    [Fact]
+    public async Task Commit_falho_mantém_pendente_e_retenta_até_confirmar()
+    {
+        // 1ª rodada: commit indisponível → saga segue Pending, nada resolvido
+        var saga = CheckoutSaga.Start("recon-nocommit", "c6", 5000, "BRL", DateTimeOffset.UtcNow);
+        saga.MarkStockReserved("res-6", DateTimeOffset.UtcNow);
+        saga.MarkOrderPlaced("66666666-6666-6666-6666-666666666666", DateTimeOffset.UtcNow);
+        saga.MarkPaymentAuthorized("pi-6", DateTimeOffset.UtcNow);
+        saga.MarkPendingReconciliation("commit-failed", DateTimeOffset.UtcNow);
+        var sagaStore = new FakeSagaStore([saga]);
+        var recon = new FakeReconciliation();
+        var release = new FakeRelease(commitFails: true);
+        var reconciler = new CheckoutReconciler(sagaStore, recon, recon, release, new FakePspReconciliation(ReconciliationOutcome.Paid));
+
+        Assert.Equal(0, await reconciler.ReconcileBatchAsync(CancellationToken.None));
+        Assert.Equal(CheckoutSagaState.PendingReconciliation, sagaStore.All[0].State);
+
+        // 2ª rodada: owner voltou → commit OK → saga Confirmed sem reconsultar PSP
+        var release2 = new FakeRelease();
+        var reconciler2 = new CheckoutReconciler(sagaStore, recon, recon, release2, new FakePspReconciliation(ReconciliationOutcome.Indeterminate));
+        Assert.Equal(1, await reconciler2.ReconcileBatchAsync(CancellationToken.None));
+        Assert.Equal(CheckoutSagaState.Confirmed, sagaStore.All[0].State);
+        Assert.Single(release2.Committed);
     }
 
     [Fact]
@@ -140,6 +174,7 @@ public sealed class CheckoutReconcilerTests
         Assert.Single(recon.Confirmed);            // order confirmada
         Assert.Single(recon.Authorized);           // intent autorizada
         Assert.Empty(release.Released);            // reserva NÃO liberada
+        Assert.Single(release.Committed);          // M9-hold: recuperada também baixa
     }
 
     [Fact]

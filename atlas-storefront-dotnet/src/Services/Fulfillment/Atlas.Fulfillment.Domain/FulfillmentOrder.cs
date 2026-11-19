@@ -47,7 +47,8 @@ public sealed partial class FulfillmentOrder
     public bool TryCancel(string reason, DateTimeOffset nowUtc)
     {
         if (State is FulfillmentState.Shipped or FulfillmentState.Delivered) return false; // janela req.4
-        State = FulfillmentState.Cancelled;
+        if (State is FulfillmentState.Cancelled) return true; // no-op idempotente
+        State = FulfillmentState.Cancelled; Version++;
         _steps.Add($"cancelled:{reason}:{nowUtc:O}");
         return true;
     }

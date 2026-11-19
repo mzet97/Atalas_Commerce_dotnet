@@ -32,7 +32,10 @@ channels:
     address: atlas.inventory.v1
     messages:
       stock.adjusted: { $ref: '#/components/messages/domainEvent' }
+      stock.received: { $ref: '#/components/messages/domainEvent' }
       stock.reserved: { $ref: '#/components/messages/domainEvent' }
+      reservation.released: { $ref: '#/components/messages/domainEvent' }
+      reservation.confirmed: { $ref: '#/components/messages/domainEvent' }
       reservation.expired: { $ref: '#/components/messages/domainEvent' }
   atlas.orders.v1:
     address: atlas.orders.v1
@@ -40,6 +43,7 @@ channels:
       order.placed: { $ref: '#/components/messages/domainEvent' }
       order.confirmed: { $ref: '#/components/messages/domainEvent' }
       order.cancelled: { $ref: '#/components/messages/domainEvent' }
+      fulfillment.step: { $ref: '#/components/messages/domainEvent' }
   atlas.payments.v1:
     address: atlas.payments.v1
     messages:

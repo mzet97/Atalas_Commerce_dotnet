@@ -217,6 +217,28 @@ public sealed class InventoryProjector(string connectionString, string consumerI
                 if (await dedup.ExecuteNonQueryAsync(ct) == 0) { await tx.RollbackAsync(ct); continue; }
             }
 
+            if (evt.EventType == "Stock.ReceivedV1")
+            {
+                // Recebimento soma on_hand (idempotente via inbox; stale guard por version).
+                var rcKey = evt.Payload.GetProperty("position_key").GetString()!;
+                var rcQty = evt.Payload.GetProperty("quantity").GetInt32();
+                var rcVer = evt.Payload.GetProperty("version").GetInt64();
+                await using var rcpt = new NpgsqlCommand($"""
+                    INSERT INTO {positionsTable}(position_key, sku_id, on_hand, reserved, source_version, projected_at)
+                    VALUES (@key, @sku, @delta, 0, @ver, now())
+                    ON CONFLICT (position_key) DO UPDATE SET
+                        on_hand = {positionsTable}.on_hand + @delta,
+                        source_version = GREATEST({positionsTable}.source_version, @ver),
+                        projected_at = now()
+                    """, conn, tx);
+                rcpt.Parameters.AddWithValue("key", rcKey);
+                rcpt.Parameters.AddWithValue("sku", rcKey.Split(':')[1]);
+                rcpt.Parameters.AddWithValue("delta", rcQty);
+                rcpt.Parameters.AddWithValue("ver", rcVer);
+                await rcpt.ExecuteNonQueryAsync(ct);
+                applied++;
+            }
+
             if (evt.EventType == "Stock.AdjustedV1")
             {
                 // SPEC-004: ajuste admin com a VERSION da posição no evento —
@@ -264,9 +286,118 @@ public sealed class InventoryProjector(string connectionString, string consumerI
                     applied++;
                 }
             }
+
+            if (evt.EventType is "Reservation.ReleasedV1" or "Reservation.ConfirmedV1")
+            {
+                // Devolução (released: reserved -= q) ou VENDA (confirmed: reserved -= q E
+                // on_hand -= q). Clamp em 0: a projeção nunca foi a fonte de seed — eventos
+                // antigos podem ter sido aplicados antes do backfill da posição.
+                var confirmed = evt.EventType == "Reservation.ConfirmedV1";
+                foreach (var line in evt.Payload.GetProperty("lines").EnumerateArray())
+                {
+                    var key = line.GetProperty("key").GetString()!;
+                    var qty = line.GetProperty("quantity").GetInt32();
+                    var sku = key.Split(':', 2)[1];
+                    await using var upsert = new NpgsqlCommand($"""
+                        INSERT INTO {positionsTable}(position_key, sku_id, on_hand, reserved, source_version, projected_at)
+                        VALUES (@key, @sku, 0, 0, 1, now())
+                        ON CONFLICT (position_key) DO UPDATE SET
+                            reserved = GREATEST(0, {positionsTable}.reserved - @qty),
+                            on_hand = {(confirmed ? $"GREATEST(0, {positionsTable}.on_hand - @qty)" : $"{positionsTable}.on_hand")},
+                            source_version = {positionsTable}.source_version + 1,
+                            projected_at = now()
+                        """, conn, tx);
+                    upsert.Parameters.AddWithValue("key", key);
+                    upsert.Parameters.AddWithValue("sku", sku);
+                    upsert.Parameters.AddWithValue("qty", qty);
+                    await upsert.ExecuteNonQueryAsync(ct);
+                    applied++;
+                }
+            }
             await tx.CommitAsync(ct);
         }
         return applied;
     }
 }
 
+
+/// <summary>
+/// Projeção de tracking (vitrine "Meus pedidos" + grade do Control): estado,
+/// total e dono a partir dos eventos versionados de orders (qualquer evento
+/// carrega o snapshot completo — upsert idempotente com stale-guard).
+/// </summary>
+public sealed class OrdersProjector(string connectionString, string consumerId,
+    string ordersTable = "order_tracking_view", string processedTable = "processed_events")
+{
+    private static readonly string[] Types =
+        ["Order.ConfirmedV1", "Order.CancelledV1", "Order.PaymentFailedV1", "Order.ReconciliationRequiredV1"];
+
+    /// <summary>Ordem do ciclo de vida p/ guarda monotônica (desconhecido = -1).</summary>
+    private static string RankCase(string expr) =>
+        $"(CASE {expr} " +
+        "WHEN 'Confirmed' THEN 0 WHEN 'Picking' THEN 1 WHEN 'Packed' THEN 2 " +
+        "WHEN 'Shipped' THEN 3 WHEN 'Delivered' THEN 4 WHEN 'Cancelled' THEN 5 " +
+        "ELSE -1 END)";
+
+    public async Task<int> ApplyBatchAsync(IReadOnlyList<DomainEventEnvelope> batch, CancellationToken ct)
+    {
+        var applied = 0;
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
+        foreach (var evt in batch)
+        {
+            await using var tx = await conn.BeginTransactionAsync(ct);
+            await using (var dedup = new NpgsqlCommand(
+                $"INSERT INTO {processedTable}(consumer_id, event_id) VALUES (@c, @e) ON CONFLICT DO NOTHING", conn, tx))
+            {
+                dedup.Parameters.AddWithValue("c", consumerId);
+                dedup.Parameters.AddWithValue("e", evt.EventId);
+                if (await dedup.ExecuteNonQueryAsync(ct) == 0) { await tx.RollbackAsync(ct); continue; }
+            }
+
+            if (!Types.Contains(evt.EventType) && evt.EventType != "Fulfillment.StepV1") { await tx.CommitAsync(ct); continue; }
+
+            if (evt.EventType == "Fulfillment.StepV1")
+            {
+                // Passo logístico: status avança Confirmed→…→Delivered (ou Cancelled).
+                // Guarda de rank (escala própria): passo antigo/reentregue nunca regride,
+                // e source_version do pedido NÃO é tocada (escalas distintas).
+                var stepOid = evt.Payload.GetProperty("order_id").GetString()!;
+                var step = evt.Payload.GetProperty("step").GetString()!;
+                await using var stepUp = new NpgsqlCommand(
+                    $"UPDATE {ordersTable} SET status = @step, projected_at = now() " +
+                    $"WHERE order_id = @id AND {RankCase("status")} <= {RankCase("@step")}",
+                    conn, tx);
+                stepUp.Parameters.AddWithValue("id", Guid.Parse(stepOid));
+                stepUp.Parameters.AddWithValue("step", step);
+                if (await stepUp.ExecuteNonQueryAsync(ct) > 0) applied++;
+                await tx.CommitAsync(ct);
+                continue;
+            }
+            var oid = evt.Payload.GetProperty("order_id").GetString()!;
+            var sub = evt.Payload.TryGetProperty("customer_id", out var subEl) ? subEl.GetString() ?? "" : "";
+            var state = evt.Payload.TryGetProperty("state", out var stateEl) ? stateEl.GetString() ?? evt.EventType : evt.EventType;
+            var total = evt.Payload.TryGetProperty("total_minor", out var totalEl) && totalEl.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? totalEl.GetInt64() : 0L;
+            var currency = evt.Payload.TryGetProperty("currency", out var curEl) ? curEl.GetString() ?? "" : "";
+            await using var upsert = new NpgsqlCommand($"""
+                INSERT INTO {ordersTable}(order_id, customer_sub, status, total_minor, currency, source_version, projected_at)
+                VALUES (@id, @sub, @state, @total, @cur, @ver, now())
+                ON CONFLICT (order_id) DO UPDATE SET
+                    status = EXCLUDED.status, total_minor = EXCLUDED.total_minor, currency = EXCLUDED.currency,
+                    source_version = EXCLUDED.source_version, projected_at = now()
+                WHERE {ordersTable}.source_version <= @ver
+                """, conn, tx);
+            upsert.Parameters.AddWithValue("id", Guid.Parse(oid));
+            upsert.Parameters.AddWithValue("sub", sub);
+            upsert.Parameters.AddWithValue("state", state);
+            upsert.Parameters.AddWithValue("total", total);
+            upsert.Parameters.AddWithValue("cur", currency);
+            upsert.Parameters.AddWithValue("ver", evt.AggregateVersion);
+            await upsert.ExecuteNonQueryAsync(ct);
+            applied++;
+            await tx.CommitAsync(ct);
+        }
+        return applied;
+    }
+}

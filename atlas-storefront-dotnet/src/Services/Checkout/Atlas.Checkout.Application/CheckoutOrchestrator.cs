@@ -10,6 +10,8 @@ public interface IInventoryReservePort
     /// <summary>Reserva autoritativa (CAS no owner). Retorna reservation_id ou null se sem saldo.</summary>
     Task<string?> ReserveAsync(string checkoutId, IReadOnlyList<(string SkuId, int Quantity)> lines, CancellationToken ct);
     Task<bool> ReleaseAsync(string reservationId, string reason, CancellationToken ct);
+    /// <summary>Confirmação = venda: baixa reserved+on_hand no owner (idempotente por pedido).</summary>
+    Task<bool> CommitAsync(string reservationId, string orderId, CancellationToken ct);
 }
 
 public interface IPspPort
@@ -152,11 +154,25 @@ public sealed class CheckoutOrchestrator(
                 // (guard PendingPayment + outbox), senão o pedido fica PendingPayment para sempre.
                 if (confirmed)
                     confirmed = await ordersStore.ConfirmOrderAsync(order.Id.Value, providerRef ?? intent.Id.Value.ToString(), ct);
+                if (!confirmed)
+                {
+                    saga.MarkConfirmed(DateTimeOffset.UtcNow);
+                    await sagaStore.SaveAsync(saga, ct);
+                    return new CheckoutResult(CheckoutResultStatus.Rejected, saga.Id.Value.ToString(), order.Id.Value.ToString(), "confirmação inconsistente");
+                }
+                // VENDA: baixa a reserva no owner (reserved+on_hand) — sem isso o saldo
+                // confirmado jamais volta e todo SKU trava em OUT_OF_STOCK (M9-hold).
+                // Falha aqui NÃO desfaz pedido pago: reconciliador retenta o commit.
+                var committed = await inventoryPort.CommitAsync(reservationId, order.Id.Value.ToString(), ct);
+                if (!committed)
+                {
+                    saga.MarkPendingReconciliation("commit-failed", DateTimeOffset.UtcNow);
+                    await sagaStore.SaveAsync(saga, ct);
+                    return new CheckoutResult(CheckoutResultStatus.Pending, saga.Id.Value.ToString(), order.Id.Value.ToString(), "pedido confirmado; baixa de estoque em reconciliação");
+                }
                 saga.MarkConfirmed(DateTimeOffset.UtcNow);
                 await sagaStore.SaveAsync(saga, ct);
-                return confirmed
-                    ? new CheckoutResult(CheckoutResultStatus.Confirmed, saga.Id.Value.ToString(), order.Id.Value.ToString(), null)
-                    : new CheckoutResult(CheckoutResultStatus.Rejected, saga.Id.Value.ToString(), order.Id.Value.ToString(), "confirmação inconsistente");
+                return new CheckoutResult(CheckoutResultStatus.Confirmed, saga.Id.Value.ToString(), order.Id.Value.ToString(), null);
 
             case PspOutcome.Declined:
                 intent.MarkDeclined(reason ?? "recusado", DateTimeOffset.UtcNow);

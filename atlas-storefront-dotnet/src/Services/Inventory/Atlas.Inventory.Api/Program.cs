@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Atlas.Inventory.Api;
 using Atlas.Inventory.Api.Grpc;
 using Atlas.Inventory.Application;
 using MongoInventoryStore = Atlas.Inventory.Infrastructure.MongoInventoryStore;
@@ -16,6 +17,7 @@ builder.Services.AddSingleton(_ => MongoInventoryStore.Create(mongoConn, mongoDb
 builder.Services.AddSingleton<Atlas.Inventory.Application.IInventoryStore>(sp => sp.GetRequiredService<MongoInventoryStore>());
 builder.Services.AddSingleton<ReserveStockHandler>();
 builder.Services.AddSingleton<InventoryOwnerGrpcService>();
+builder.Services.AddHostedService<ReservationReaperService>();
 
 builder.WebHost.ConfigureKestrel(o =>
 {

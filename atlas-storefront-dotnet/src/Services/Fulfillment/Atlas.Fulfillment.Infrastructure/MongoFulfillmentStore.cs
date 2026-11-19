@@ -17,7 +17,27 @@ public sealed class MongoFulfillmentStore
     private readonly IMongoDatabase _db;
     private MongoFulfillmentStore(IMongoDatabase db) => _db = db;
     private IMongoCollection<FulfillmentDoc> Orders() => _db.GetCollection<FulfillmentDoc>("fulfillment.orders");
-    private IMongoCollection<OutboxDoc> Outbox() => _db.GetCollection<FulfillmentDoc>("fulfillment.outbox") is null ? null! : _db.GetCollection<OutboxDoc>("fulfillment.outbox");
+    private IMongoCollection<OutboxDoc> Outbox() => _db.GetCollection<OutboxDoc>("fulfillment.outbox");
+
+    /// <summary>
+    /// Avanço com evento: CAS do estado + outbox Fulfillment.StepV1 na MESMA transação
+    /// (tópico atlas.orders.v1 — o tracking do comprador acompanha Picking→Delivered).
+    /// Sem dual write: sem outbox, sem avanço visível fora do owner.
+    /// </summary>
+    public async Task<bool> SaveWithStepEventAsync(FulfillmentOrder order, string correlationId, CancellationToken ct)
+    {
+        using var session = await _db.Client.StartSessionAsync(cancellationToken: ct);
+        return await session.WithTransactionAsync(async (s, token) =>
+        {
+            var result = await Orders().ReplaceOneAsync(s,
+                d => d.OrderId == order.OrderId && d.Version == order.Version - 1,
+                FulfillmentDoc.From(order), cancellationToken: token);
+            if (result.ModifiedCount != 1) return false;
+            await Outbox().InsertOneAsync(s, OutboxDoc.StepEvent(
+                order.OrderId, order.State.ToString(), order.Version, order.TrackingCode, correlationId), cancellationToken: token);
+            return true;
+        }, cancellationToken: ct);
+    }
 
     /// <summary>Upsert por OrderId: criação idempotente por Order.ConfirmedV1 reentregue (req.4).</summary>
     public async Task<(FulfillmentOrder Order, bool Created)> GetOrCreateAsync(FulfillmentOrder order, CancellationToken ct)
@@ -71,7 +91,33 @@ public sealed class MongoFulfillmentStore
     }
 
     public sealed class LineDoc { public string SkuId { get; set; } = default!; public int Quantity { get; set; } }
-    public sealed class OutboxDoc { public Guid EventId { get; set; } = Guid.NewGuid(); }
+    /// <summary>Envelope de outbox no formato do OutboxDispatcher (mesmo dos outros owners).</summary>
+    public sealed class OutboxDoc
+    {
+        [BsonId] [BsonRepresentation(BsonType.String)] public Guid Id { get; set; } = Guid.NewGuid();
+        public string EventType { get; set; } = default!;
+        public string AggregateId { get; set; } = default!;
+        public long AggregateVersion { get; set; }
+        public string Topic { get; set; } = "atlas.orders.v1";
+        public bool Published { get; set; }
+        public string CorrelationId { get; set; } = default!;
+        public BsonDocument Payload { get; set; } = default!;
+        public DateTimeOffset OccurredAtUtc { get; set; } = DateTimeOffset.UtcNow;
+
+        public static OutboxDoc StepEvent(Guid orderId, string step, long version, string tracking, string correlationId) => new()
+        {
+            EventType = "Fulfillment.StepV1",
+            AggregateId = orderId.ToString(),
+            AggregateVersion = version,
+            CorrelationId = correlationId,
+            Payload = new BsonDocument
+            {
+                ["order_id"] = orderId.ToString(),
+                ["step"] = step,
+                ["tracking_code"] = tracking,
+            },
+        };
+    }
 }
 
 public static class FulfillmentOrderHydration

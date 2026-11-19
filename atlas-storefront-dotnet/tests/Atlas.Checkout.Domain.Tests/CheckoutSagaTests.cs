@@ -85,4 +85,15 @@ public class CheckoutSagaTests
         Assert.Throws<ArgumentException>(() => CheckoutSaga.Start("", "c", 100, "BRL", Now));
         Assert.Throws<ArgumentOutOfRangeException>(() => CheckoutSaga.Start("k", "c", 0, "BRL", Now));
     }
+
+    [Fact]
+    public void Commit_falho_após_pagamento_vira_pending_reconciliável() // M9-hold
+    {
+        var saga = NewSaga();
+        saga.MarkStockReserved("res-1", Now);
+        saga.MarkOrderPlaced("order-1", Now);
+        saga.MarkPaymentAuthorized("pi-1", Now);
+        Assert.True(saga.MarkPendingReconciliation("commit-failed", Now));
+        Assert.Equal(CheckoutSagaState.PendingReconciliation, saga.State);
+    }
 }

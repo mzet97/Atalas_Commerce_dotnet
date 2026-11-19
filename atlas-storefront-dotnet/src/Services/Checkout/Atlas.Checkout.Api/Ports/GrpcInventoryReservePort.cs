@@ -23,9 +23,37 @@ public sealed class GrpcInventoryReservePort(string ownerUrl) : IInventoryReserv
         }
     }
 
-    public Task<bool> ReleaseAsync(string reservationId, string reason, CancellationToken ct)
+    public async Task<bool> ReleaseAsync(string reservationId, string reason, CancellationToken ct)
     {
-        // release via RPC específico chega com o fluxo de cancelamento da SPEC-006
-        return Task.FromResult(true);
+        try
+        {
+            using var channel = Grpc.Net.Client.GrpcChannel.ForAddress(ownerUrl);
+            var client = new InventoryOwnerService.InventoryOwnerServiceClient(channel);
+            var response = await client.ReleaseReservationAsync(
+                new ReleaseReservationRequest { ReservationId = reservationId, RequestId = $"{reason}:{reservationId}" },
+                cancellationToken: ct);
+            return response.Accepted;
+        }
+        catch (global::Grpc.Core.RpcException)
+        {
+            return false; // reconciliador/reaper tentam de novo — nunca presumir
+        }
+    }
+
+    public async Task<bool> CommitAsync(string reservationId, string orderId, CancellationToken ct)
+    {
+        try
+        {
+            using var channel = Grpc.Net.Client.GrpcChannel.ForAddress(ownerUrl);
+            var client = new InventoryOwnerService.InventoryOwnerServiceClient(channel);
+            var response = await client.ConfirmReservationAsync(
+                new ConfirmReservationRequest { ReservationId = reservationId, OrderId = orderId },
+                cancellationToken: ct);
+            return response.Accepted;
+        }
+        catch (global::Grpc.Core.RpcException)
+        {
+            return false; // reconciliador tenta de novo — nunca presumir venda
+        }
     }
 }

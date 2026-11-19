@@ -48,6 +48,18 @@ public sealed class CheckoutReconciler(
 
         foreach (var saga in pending)
         {
+            // commit-failed: pedido JÁ pago+confirmado, falta só a baixa no owner.
+            // Não consulta o PSP — retenta o commit idempotente e confirma a saga.
+            if (saga.FailureReason == "commit-failed"
+                && saga.ReservationId is not null && saga.OrderId is not null)
+            {
+                var ok = await inventoryPort.CommitAsync(saga.ReservationId, saga.OrderId, ct);
+                if (!ok) continue; // próxima rodada
+                saga.MarkReconciliationPaid(saga.PaymentIntentId ?? "pi-reconciled", saga.ProviderReference ?? "", DateTimeOffset.UtcNow);
+                await sagaStore.SaveAsync(saga, ct);
+                resolved++;
+                continue;
+            }
             // A autorização no PSP foi feita sob o ORDER ID (o orchestrator passa orderReference
             // como idempotency_key do PSP) — a consulta de reconciliação usa a MESMA chave.
             var (outcome, providerRef) = await pspReconciliation.QueryAuthorizationAsync(
@@ -56,11 +68,17 @@ public sealed class CheckoutReconciler(
             switch (outcome)
             {
                 case ReconciliationOutcome.Paid when saga.OrderId is not null:
-                    // pago: confirma intent + captura + order + saga (UC003-T03; política de captura SPEC-006)
+                    // pago: confirma intent + captura + order + baixa da reserva + saga
+                    // (UC003-T03; política de captura SPEC-006; M9-hold: sem commit o SKU trava)
                     await paymentsReconciliation.AuthorizeIntentAsync(saga.IdempotencyKey, providerRef!, ct);
                     await paymentsReconciliation.CaptureIntentAsync(saga.IdempotencyKey, ct);
                     if (saga.OrderId is not null && Guid.TryParse(saga.OrderId, out var orderId))
                         await ordersReconciliation.ConfirmOrderAsync(orderId, providerRef!, ct);
+                    if (saga.ReservationId is not null)
+                    {
+                        var committed = await inventoryPort.CommitAsync(saga.ReservationId, saga.OrderId!, ct);
+                        if (!committed) break; // próxima rodada (pedido pago; só falta a baixa)
+                    }
                     saga.MarkReconciliationPaid(saga.PaymentIntentId ?? "pi-reconciled", providerRef ?? "", DateTimeOffset.UtcNow);
                     await sagaStore.SaveAsync(saga, ct);
                     resolved++;
@@ -115,6 +133,11 @@ public sealed class CheckoutReconciler(
                         await paymentsReconciliation.AuthorizeIntentAsync(saga.IdempotencyKey, providerRef!, ct);
                         if (Guid.TryParse(saga.OrderId, out var orderId))
                             await ordersReconciliation.ConfirmOrderAsync(orderId, providerRef!, ct);
+                        if (saga.ReservationId is not null)
+                        {
+                            var committed = await inventoryPort.CommitAsync(saga.ReservationId, saga.OrderId, ct);
+                            if (!committed) continue; // próxima rodada (pedido pago; só falta a baixa)
+                        }
                         saga.MarkReconciliationPaid(saga.PaymentIntentId ?? "pi-recovered", providerRef ?? "", nowUtc);
                         await sagaStore.SaveAsync(saga, ct);
                         recovered++;

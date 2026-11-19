@@ -29,10 +29,14 @@ app.MapPost("/admin/orders/{orderId:guid}/advance", async (Guid orderId, string 
 {
     var order = await store.FindAsync(orderId, ct);
     if (order is null) return Results.NotFound();
+    var before = order.Version;
     var target = Enum.Parse<FulfillmentOrder.FulfillmentState>(to, ignoreCase: true);
     if (!order.TryAdvance(target, DateTimeOffset.UtcNow))
         return Results.Conflict(new { reason = $"transição inválida: {order.State} → {to}" });
-    var ok = await store.SaveAsync(order, ct);
+    // Passo real publica Fulfillment.StepV1 (tracking do comprador); no-op só persiste.
+    var ok = order.Version > before
+        ? await store.SaveWithStepEventAsync(order, orderId.ToString(), ct)
+        : await store.SaveAsync(order, ct);
     return ok ? Results.Ok(new { orderId, state = order.State.ToString(), tracking = order.TrackingCode })
               : Results.Conflict(new { reason = "conflito de versão (CAS)" });
 });
@@ -42,9 +46,12 @@ app.MapPost("/admin/orders/{orderId:guid}/cancel", async (Guid orderId, MongoFul
 {
     var order = await store.FindAsync(orderId, ct);
     if (order is null) return Results.NotFound();
+    var before = order.Version;
     if (!order.TryCancel("cancelamento-cliente", DateTimeOffset.UtcNow))
         return Results.Conflict(new { reason = "fora da janela: já expedido/entregue" });
-    var ok = await store.SaveAsync(order, ct);
+    var ok = order.Version > before
+        ? await store.SaveWithStepEventAsync(order, orderId.ToString(), ct)
+        : await store.SaveAsync(order, ct);
 
     // RELEASE REAL de estoque (M6 fecha o stub do M3): chama o owner para devolver saldo.
     // (lógica completa de devolução por SKU na SPEC-006+; aqui confirma o caminho owner-call)
