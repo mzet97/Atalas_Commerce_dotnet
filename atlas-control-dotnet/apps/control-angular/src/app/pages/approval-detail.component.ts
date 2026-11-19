@@ -37,11 +37,19 @@ import { KeycloakService } from '../auth/keycloak.service';
     <div class="card">
       <h2>Despachar ao owner</h2>
       <p class="muted">O owner revalida token, grant e estado. Despacho é idempotente por nonce.</p>
+      @if (a.action === 'inventory.receive') {
+      <div class="row">
+        <label>Request ID <input [(ngModel)]="requestId" class="mono"></label>
+        <label>Quantidade <input type="number" [(ngModel)]="qty" min="1"></label>
+        <button (click)="dispatchReceive()" [disabled]="busy()">Despachar recebimento</button>
+      </div>
+      } @else {
       <div class="row">
         <label>Request ID <input [(ngModel)]="requestId" class="mono"></label>
         <label>Delta <input type="number" [(ngModel)]="delta"></label>
         <button (click)="dispatch()" [disabled]="busy()">Despachar ajuste</button>
       </div>
+      }
     </div>
     }
     @if (result()) { <p class="ok">{{ result() }}</p> }
@@ -59,6 +67,7 @@ export class ApprovalDetailComponent implements OnInit {
   reason = '';
   requestId = `web-${Date.now().toString(36)}`;
   delta = 0;
+  qty = 1;
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id') ?? '';
@@ -90,6 +99,20 @@ export class ApprovalDetailComponent implements OnInit {
     try {
       const r = await this.api.dispatch(a.id, { requestId: this.requestId, delta: this.delta });
       this.result.set(`Despacho concluído: ${r.state}`);
+      this.approval.set(await this.api.getApproval(a.id));
+    } catch (e) { this.error.set((e as Error).message); }
+    finally { this.busy.set(false); }
+  }
+
+  async dispatchReceive(): Promise<void> {
+    const a = this.approval();
+    if (!a) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.result.set('');
+    try {
+      const r = await this.api.dispatchReceive({ approvalId: a.id, requestId: this.requestId, quantity: Number(this.qty) });
+      this.result.set(`Recebimento despachado: ${r.state}`);
       this.approval.set(await this.api.getApproval(a.id));
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }

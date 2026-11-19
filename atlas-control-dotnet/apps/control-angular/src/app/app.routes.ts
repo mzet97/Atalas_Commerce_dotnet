@@ -5,6 +5,8 @@ import { DashboardComponent } from './pages/dashboard.component';
 import { ApprovalsComponent } from './pages/approvals.component';
 import { ApprovalDetailComponent } from './pages/approval-detail.component';
 import { RequestComponent } from './pages/request.component';
+import { ReceiveComponent } from './pages/receive.component';
+import { OrdersComponent } from './pages/orders.component';
 import { PublicationsComponent } from './pages/publications.component';
 import { PublicationDetailComponent } from './pages/publication-detail.component';
 import { PublicationRequestComponent } from './pages/publication-request.component';
@@ -23,6 +25,8 @@ export const routes: Routes = [
   { path: 'approvals', component: ApprovalsComponent, canActivate: [authGuard] },
   { path: 'approvals/:id', component: ApprovalDetailComponent, canActivate: [authGuard] },
   { path: 'approvals-new', component: RequestComponent, canActivate: [authGuard], data: { roles: ['inventory_operator', 'approver', 'iam_admin'] } },
+  { path: 'receive-new', component: ReceiveComponent, canActivate: [authGuard], data: { roles: ['inventory_operator', 'approver', 'iam_admin'] } },
+  { path: 'orders', component: OrdersComponent, canActivate: [authGuard], data: { roles: ['approver', 'iam_admin', 'catalog_editor'] } },
   { path: 'publications', component: PublicationsComponent, canActivate: [authGuard] },
   { path: 'publications/:id', component: PublicationDetailComponent, canActivate: [authGuard] },
   { path: 'publications-new', component: PublicationRequestComponent, canActivate: [authGuard], data: { roles: ['catalog_editor', 'approver', 'iam_admin'] } },

@@ -24,7 +24,11 @@ import { KeycloakService } from './auth/keycloak.service';
         <div class="side-sec"><span>APROVAÇÕES</span>
           <a routerLink="/approvals" routerLinkActive="active">Ajustes de estoque</a>
           <a routerLink="/approvals-new" routerLinkActive="active">Solicitar ajuste</a>
+          <a routerLink="/receive-new" routerLinkActive="active">Receber mercadoria</a>
           @if (kc.hasRole('approver')) { <a routerLink="/refunds" routerLinkActive="active">Reembolsos</a> }
+        </div>
+        <div class="side-sec"><span>PEDIDOS</span>
+          <a routerLink="/orders" routerLinkActive="active">Pedidos</a>
         </div>
         <div class="side-sec"><span>SISTEMA</span>
           <a routerLink="/audit" routerLinkActive="active">Auditoria</a>

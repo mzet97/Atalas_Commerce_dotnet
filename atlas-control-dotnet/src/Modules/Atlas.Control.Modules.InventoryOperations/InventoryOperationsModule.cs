@@ -3,6 +3,7 @@ using Atlas.Control.Modules.Kernel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
+using NpgsqlTypes;
 using Results = Microsoft.AspNetCore.Http.Results;
 
 namespace Atlas.Control.Modules.InventoryOperations;
@@ -19,6 +20,9 @@ public interface IInventoryStockOwner
     Task<(bool Ok, long PositionVersion, string Error)> AdjustWithApprovalAsync(
         string requestId, string warehouseId, string skuId, int delta, string reason,
         string actorSub, string approvalToken, string correlationId, CancellationToken ct);
+    Task<(bool Ok, long PositionVersion, string Error)> ReceiveWithApprovalAsync(
+        string requestId, string warehouseId, string skuId, int quantity, string reason,
+        string actorSub, string approvalToken, string correlationId, CancellationToken ct);
     Task<(bool Found, long Version)> GetHeadVersionAsync(string warehouseId, string skuId, CancellationToken ct);
 }
 
@@ -31,6 +35,8 @@ public sealed class InventoryOperationsModule(
 {
     public const string GrantAction = "inventory:adjust";
     public const string TokenAction = "inventory.adjust"; // convenção do token v2 (StockApprovalToken)
+    public const string ReceiveGrantAction = "inventory:receive";
+    public const string ReceiveTokenAction = "inventory.receive";
 
     public string Name => "inventory-operations";
 
@@ -86,6 +92,79 @@ public sealed class InventoryOperationsModule(
             return Results.Created($"/modules/approvals/{approval.Id}", new { approvalId = approval.Id, state = approval.State.ToString() });
         });
 
+        // ---- recebimento de mercadoria: request → decide (genérico) → dispatch próprio ----
+        endpoints.MapPost("/modules/inventory-operations/receive/requests", "role:inventory_operator",
+            async (HttpContext http, ReceiveRequest req, CancellationToken ct) =>
+        {
+            var requester = Sub(http);
+            if (req.Quantity <= 0)
+                return Results.Json(new { error = "quantity deve ser > 0", audited = true }, statusCode: 400);
+            if (!await approvals.HasActiveGrantAsync(requester, ReceiveGrantAction, req.WarehouseId, ct))
+            {
+                await audit.AppendAsync(requester, "inventory.receive.request", "DENIED_NO_GRANT",
+                    $"wh={req.WarehouseId} sku={req.SkuId} qty={req.Quantity}", Corr(), ct);
+                return Results.Json(new { error = $"sem grant ativo {ReceiveGrantAction} no warehouse {req.WarehouseId}", audited = true },
+                    statusCode: 403);
+            }
+            var approval = OperationApproval.Create(requester, ReceiveTokenAction,
+                StockSubject(req.WarehouseId, req.SkuId), req.Reason, DateTimeOffset.UtcNow);
+            await approvals.InsertApprovalAsync(approval, ct);
+            await audit.AppendAsync(requester, "inventory.receive.request", "CREATED",
+                $"approval={approval.Id} wh={req.WarehouseId} sku={req.SkuId} qty={req.Quantity} motivo={req.Reason}", Corr(), ct);
+            return Results.Created($"/modules/approvals/{approval.Id}", new { approvalId = approval.Id, state = approval.State.ToString() });
+        });
+
+        endpoints.MapPost("/modules/inventory-operations/receive/dispatch", "role:approver",
+            async (HttpContext http, ReceiveDispatchRequest req, CancellationToken ct) =>
+        {
+            var dispatcher = Sub(http);
+            var approval = await approvals.GetApprovalAsync(Guid.Parse(req.ApprovalId), ct);
+            if (approval is null) return Results.NotFound();
+            var (wh, sku) = SplitSubject(approval.Subject);
+            var correlation = Corr();
+
+            if (approval.State != OperationApprovalState.Approved || approval.ApprovalToken is null || approval.Jti is null)
+            {
+                await audit.AppendAsync(dispatcher, "inventory.receive.dispatch", "DENIED_INVALID_STATE",
+                    $"approval={req.ApprovalId} state={approval.State}", correlation, ct);
+                return Results.Conflict(new { error = $"estado {approval.State} não é despachável", audited = true });
+            }
+            if (approval.Action != ReceiveTokenAction)
+            {
+                await audit.AppendAsync(dispatcher, "inventory.receive.dispatch", "DENIED_WRONG_ACTION",
+                    $"approval={req.ApprovalId} action={approval.Action}", correlation, ct);
+                return Results.Conflict(new { error = "aprovação não é de recebimento", audited = true });
+            }
+
+            if (!await approvals.HasActiveGrantAsync(approval.RequestedBy, ReceiveGrantAction, wh, ct)
+                || !await approvals.HasActiveGrantAsync(approval.DecidedBy!, ReceiveGrantAction, wh, ct))
+            {
+                await audit.AppendAsync(dispatcher, "inventory.receive.dispatch", "DENIED_GRANT_REVOKED",
+                    $"approval={req.ApprovalId} wh={wh}", correlation, ct);
+                return Results.Json(new { error = "grant revogado/expirado desde a aprovação", audited = true }, statusCode: 403);
+            }
+
+            if (!await approvals.TryBurnTokenAsync(approval.Jti, req.ApprovalId, ct))
+            {
+                await audit.AppendAsync(dispatcher, "inventory.receive.dispatch", "DENIED_TOKEN_REPLAY",
+                    $"approval={req.ApprovalId} jti={approval.Jti}", correlation, ct);
+                return Results.Conflict(new { error = "token já utilizado (replay)", audited = true });
+            }
+
+            approval.MarkDispatched(DateTimeOffset.UtcNow);
+            await approvals.SaveApprovalAsync(approval, ct);
+            var (ok, version, error) = await stockOwner.ReceiveWithApprovalAsync(
+                req.RequestId, wh, sku, req.Quantity, req.Reason ?? approval.Justification,
+                approval.DecidedBy!, approval.ApprovalToken, correlation, ct);
+            approval.MarkFinal(ok ? OperationApprovalState.Executed : OperationApprovalState.Failed, DateTimeOffset.UtcNow);
+            await approvals.SaveApprovalAsync(approval, ct);
+            await audit.AppendAsync(dispatcher, "inventory.receive.dispatch", ok ? "EXECUTED" : "FAILED",
+                $"approval={req.ApprovalId} wh={wh} sku={sku} qty={req.Quantity} version={version} erro={error}", correlation, ct);
+            return ok
+                ? Results.Ok(new { state = "Executed", positionVersion = version })
+                : Results.Json(new { state = "Failed", error, audited = true }, statusCode: 502);
+        });
+
         endpoints.MapPost("/modules/approvals/{id}/decide", "role:approver", async (HttpContext http, string id, DecideRequest req, CancellationToken ct) =>
         {
             var approver = Sub(http);
@@ -95,8 +174,10 @@ public sealed class InventoryOperationsModule(
             {
                 if (req.Decision == "APPROVED")
                 {
+                    // grant exigido depende da action (adjust OU receive) — token emitido com approval.Action
+                    var needGrant = approval.Action == ReceiveTokenAction ? ReceiveGrantAction : GrantAction;
                     // four-eyes: ≠ requester (409 auditado); approver também precisa de grant ativo
-                    if (!await approvals.HasActiveGrantAsync(approver, GrantAction, WarehouseOf(approval.Subject), ct))
+                    if (!await approvals.HasActiveGrantAsync(approver, needGrant, WarehouseOf(approval.Subject), ct))
                     {
                         await audit.AppendAsync(approver, "inventory.adjust.decide", "DENIED_APPROVER_NO_GRANT",
                             $"approval={id}", Corr(), ct);
@@ -229,12 +310,12 @@ public sealed class InventoryOperationsModule(
             var pageSizeEff = Math.Clamp(pageSize ?? 50, 1, 200);
             await using var countCmd = new NpgsqlCommand(
                 "SELECT count(*) FROM inventory_admin_view WHERE (@sku IS NULL OR sku_id LIKE '%' || @sku || '%')", connection);
-            countCmd.Parameters.AddWithValue("sku", (object?)skuContains ?? DBNull.Value);
+            countCmd.Parameters.Add(new NpgsqlParameter("sku", NpgsqlDbType.Text) { Value = (object?)skuContains ?? DBNull.Value });
             var total = (long)(await countCmd.ExecuteScalarAsync(ct))!;
             await using var cmd = new NpgsqlCommand(
                 "SELECT position_key, sku_id, on_hand, reserved, source_version, projected_at FROM inventory_admin_view " +
                 "WHERE (@sku IS NULL OR sku_id LIKE '%' || @sku || '%') ORDER BY projected_at DESC LIMIT @limit OFFSET @offset", connection);
-            cmd.Parameters.AddWithValue("sku", (object?)skuContains ?? DBNull.Value);
+            cmd.Parameters.Add(new NpgsqlParameter("sku", NpgsqlDbType.Text) { Value = (object?)skuContains ?? DBNull.Value });
             cmd.Parameters.AddWithValue("limit", pageSizeEff);
             cmd.Parameters.AddWithValue("offset", (Math.Max(page ?? 1, 1) - 1) * pageSizeEff);
             var rows = new List<object>();
@@ -304,6 +385,8 @@ public sealed class InventoryOperationsModule(
 
     public sealed record IamGrantRequest(string Subject, string Action, string WarehouseId, int TtlMinutes);
     public sealed record AdjustRequest(string WarehouseId, string SkuId, int Delta, string Reason);
+    public sealed record ReceiveRequest(string WarehouseId, string SkuId, int Quantity, string Reason);
+    public sealed record ReceiveDispatchRequest(string ApprovalId, string RequestId, int Quantity, string? Reason);
     public sealed record DecideRequest(string Decision, string? Reason);
     public sealed record DispatchRequest(string RequestId, int Delta, string? Reason);
 }

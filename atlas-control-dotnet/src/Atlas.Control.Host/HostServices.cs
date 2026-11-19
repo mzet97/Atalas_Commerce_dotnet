@@ -3,6 +3,7 @@ using System.Text.Json;
 using Atlas.Control.Modules.Approvals;
 using CatalogOps = Atlas.Control.Modules.CatalogOperations;
 using OffersOps = Atlas.Control.Modules.OffersOperations;
+using OrdersOps = Atlas.Control.Modules.Orders;
 using Atlas.Control.Modules.InventoryOperations;
 using Atlas.Control.Modules.Kernel;
 
@@ -18,6 +19,33 @@ public sealed class ControlAuditSink(AuditChainStore store)
 /// <summary>Despacho real ao Inventory owner por gRPC (SPEC-004: adjust four-eyes + head version).</summary>
 public sealed class GrpcInventoryOwnerDispatcher(string ownerUrl) : IInventoryStockOwner
 {
+    public async Task<(bool Ok, long PositionVersion, string Error)> ReceiveWithApprovalAsync(
+        string requestId, string warehouseId, string skuId, int quantity, string reason,
+        string actorSub, string approvalToken, string correlationId, CancellationToken ct)
+    {
+        try
+        {
+            using var channel = Grpc.Net.Client.GrpcChannel.ForAddress(ownerUrl);
+            var client = new Atlas.Contracts.Inventory.V1.InventoryOwnerService.InventoryOwnerServiceClient(channel);
+            var response = await client.ReceiveStockAsync(new Atlas.Contracts.Inventory.V1.ReceiveStockRequest
+            {
+                RequestId = requestId,
+                ActorSub = actorSub,
+                ApprovalToken = approvalToken,
+                WarehouseId = warehouseId,
+                SkuId = skuId,
+                Quantity = quantity,
+                Reason = reason,
+                CorrelationId = correlationId,
+            }, cancellationToken: ct);
+            return (response.Accepted, response.PositionVersion, "");
+        }
+        catch (global::Grpc.Core.RpcException ex)
+        {
+            return (false, 0, $"owner recusou ({ex.StatusCode}): {ex.Status.Detail}");
+        }
+    }
+
     public async Task<(bool Ok, long PositionVersion, string Error)> AdjustWithApprovalAsync(
         string requestId, string warehouseId, string skuId, int delta, string reason,
         string actorSub, string approvalToken, string correlationId, CancellationToken ct)
@@ -415,5 +443,76 @@ public sealed class GrpcOffersOwnerCatalog(string ownerUrl) : OffersOps.IOffersO
         {
             return (false, 0, ex.Status.Detail, null);
         }
+    }
+}
+
+/// <summary>Adapter HTTP ao Fulfillment owner (transições revalidadas no owner).</summary>
+public sealed class HttpFulfillmentOrders(HttpClient http) : OrdersOps.IFulfillmentOrders
+{
+    private sealed record FulfillmentDetail(bool Found, string State, string Tracking, string Steps, string? Reason);
+
+    public async Task<(bool Found, string State, string Tracking, string Steps, string? Reason)> GetAsync(string orderId, CancellationToken ct)
+    {
+        using var res = await http.GetAsync($"/admin/orders/{orderId}", ct);
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return (false, "", "", "", "inexistente");
+        res.EnsureSuccessStatusCode();
+        var doc = System.Text.Json.JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+        var j = doc.RootElement;
+        return (true, j.GetProperty("state").GetString()!, j.TryGetProperty("trackingCode", out var t) ? t.GetString()! : "",
+            j.TryGetProperty("steps", out var s) ? s.ToString() : "", null);
+    }
+
+    public async Task<(bool Accepted, string State, string? Reason)> StartAsync(string orderId, CancellationToken ct)
+    {
+        try
+        {
+            using var res = await http.PostAsync($"/admin/orders/{orderId}/start", null, ct);
+            var body = await res.Content.ReadAsStringAsync(ct);
+            if (!res.IsSuccessStatusCode)
+            {
+                var errDoc = System.Text.Json.JsonDocument.Parse(body);
+                return (false, "", errDoc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() : res.StatusCode.ToString());
+            }
+            var okDoc = System.Text.Json.JsonDocument.Parse(body);
+            return (true, okDoc.RootElement.GetProperty("state").GetString()!, null);
+        }
+        catch (global::System.Net.Http.HttpRequestException ex)
+        {
+            return (false, "", ex.Message);
+        }
+    }
+
+    public async Task<(bool Accepted, string State, string? Reason)> AdvanceAsync(string orderId, string targetState, CancellationToken ct)
+    {
+        using var res = await http.PostAsync($"/admin/orders/{orderId}/advance?to={Uri.EscapeDataString(targetState)}", null, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (res.StatusCode is System.Net.HttpStatusCode.Conflict or System.Net.HttpStatusCode.NotFound)
+            return (false, "", System.Text.Json.JsonDocument.Parse(body).RootElement.TryGetProperty("reason", out var r) ? r.GetString() : res.StatusCode.ToString());
+        res.EnsureSuccessStatusCode();
+        var j = System.Text.Json.JsonDocument.Parse(body).RootElement;
+        return (true, j.GetProperty("state").GetString()!, null);
+    }
+
+    public async Task<(bool Accepted, string State, string? Reason)> CancelAsync(string orderId, CancellationToken ct)
+    {
+        using var res = await http.PostAsync($"/admin/orders/{orderId}/cancel", null, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (res.StatusCode is System.Net.HttpStatusCode.Conflict or System.Net.HttpStatusCode.NotFound)
+            return (false, "", System.Text.Json.JsonDocument.Parse(body).RootElement.TryGetProperty("reason", out var r) ? r.GetString() : res.StatusCode.ToString());
+        res.EnsureSuccessStatusCode();
+        var j = System.Text.Json.JsonDocument.Parse(body).RootElement;
+        return (true, j.GetProperty("state").GetString()!, null);
+    }
+}
+
+/// <summary>Adapter HTTP ao Payments owner (lookup read-only de intent por pedido).</summary>
+public sealed class HttpPaymentsIntents(HttpClient http) : Atlas.Control.Modules.Payments.IPaymentsIntents
+{
+    public async Task<object?> GetByOrderAsync(string orderId, CancellationToken ct)
+    {
+        using var res = await http.GetAsync($"/intents/by-order/{orderId}", ct);
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        res.EnsureSuccessStatusCode();
+        return System.Text.Json.JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct)).RootElement.Clone();
     }
 }

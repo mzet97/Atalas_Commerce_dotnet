@@ -57,6 +57,12 @@ export class ControlApiService {
   getApproval(id: string): Promise<OperationApproval> {
     return this.call(`/modules/approvals/${id}`).then((d) => this.mapApproval(d as Record<string, unknown>));
   }
+  requestReceive(input: { warehouseId: string; skuId: string; quantity: number; reason: string }): Promise<{ approvalId: string }> {
+    return this.call('/modules/inventory-operations/receive/requests', { method: 'POST', body: JSON.stringify(input) });
+  }
+  dispatchReceive(input: { approvalId: string; requestId: string; quantity: number; reason?: string }): Promise<{ state: string }> {
+    return this.call('/modules/inventory-operations/receive/dispatch', { method: 'POST', body: JSON.stringify(input) });
+  }
   requestAdjust(input: { warehouseId: string; skuId: string; delta: number; reason: string }): Promise<{ approvalId: string }> {
     return this.call('/modules/inventory-operations/adjust/requests', { method: 'POST', body: JSON.stringify(input) });
   }
@@ -197,6 +203,27 @@ export class ControlApiService {
   // ---- reembolsos four-eyes ----
   refundToken(input: { requesterSub: string; orderId: string; amountMinor: number; rmaId: string }): Promise<{ approvalToken: string; approver: string }> {
     return this.call('/modules/payments-refunds/token', { method: 'POST', body: JSON.stringify(input) });
+  }
+  refundIntent(orderId: string): Promise<Record<string, unknown>> {
+    return this.call(`/modules/payments-refunds/intents?orderId=${encodeURIComponent(orderId)}`);
+  }
+
+  // ---- pedidos (grade + transições via fulfillment) ----
+  listOrders(status?: string): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.call(`/modules/orders${q}`);
+  }
+  getOrder(id: string): Promise<Record<string, unknown>> {
+    return this.call(`/modules/orders/${id}`);
+  }
+  startOrder(id: string): Promise<{ orderId: string; state: string }> {
+    return this.call(`/modules/orders/${id}/start`, { method: 'POST' });
+  }
+  advanceOrder(id: string, to: string): Promise<{ orderId: string; state: string }> {
+    return this.call(`/modules/orders/${id}/advance`, { method: 'POST', body: JSON.stringify({ to }) });
+  }
+  cancelOrder(id: string): Promise<{ orderId: string; state: string }> {
+    return this.call(`/modules/orders/${id}/cancel`, { method: 'POST' });
   }
 
   // ---- operação ----

@@ -26,6 +26,21 @@ import { ControlApiService } from '../api/control-api.service';
       <p class="mono wrap">{{ token() }}</p>
     </div>
     }
+    <div class="card">
+      <h2>Consultar intent do pedido</h2>
+      <div class="row">
+        <label>Pedido (order id) <input [(ngModel)]="lookupId" class="mono"></label>
+        <button (click)="lookup()" [disabled]="busy()">Consultar</button>
+      </div>
+      @if (intent(); as it) {
+      <dl class="facts">
+        <dt>Estado</dt><dd><span class="pill">{{ it['state'] }}</span></dd>
+        <dt>Intent</dt><dd class="mono wrap">{{ it['intentId'] }}</dd>
+        <dt>PSP ref</dt><dd class="mono wrap">{{ it['providerReference'] ?? '—' }}</dd>
+        <dt>Webhooks</dt><dd class="mono">{{ it['webhooksCount'] ?? it['webhooksProcessed'] ?? 0 }}</dd>
+      </dl>
+      }
+    </div>
   </section>`,
 })
 export class RefundsComponent {
@@ -35,6 +50,8 @@ export class RefundsComponent {
   token = signal('');
   approver = signal('');
   form = { requesterSub: '', orderId: '', amountMinor: 0, rmaId: '' };
+  lookupId = '';
+  intent = signal<Record<string, unknown> | null>(null);
 
   async issue(): Promise<void> {
     this.busy.set(true);
@@ -44,6 +61,17 @@ export class RefundsComponent {
       const r = await this.api.refundToken({ ...this.form });
       this.token.set(r.approvalToken);
       this.approver.set(r.approver);
+    } catch (e) { this.error.set((e as Error).message); }
+    finally { this.busy.set(false); }
+  }
+
+  async lookup(): Promise<void> {
+    if (!this.lookupId) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.intent.set(null);
+    try {
+      this.intent.set(await this.api.refundIntent(this.lookupId.trim()));
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }

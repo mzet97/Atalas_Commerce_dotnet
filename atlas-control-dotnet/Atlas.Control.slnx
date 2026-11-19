@@ -7,6 +7,7 @@
     <Project Path="src/Modules/Atlas.Control.Modules.Approvals/Atlas.Control.Modules.Approvals.csproj" />
     <Project Path="src/Modules/Atlas.Control.Modules.Kernel/Atlas.Control.Modules.Kernel.csproj" />
     <Project Path="src/Modules/Atlas.Control.Modules.InventoryOperations/Atlas.Control.Modules.InventoryOperations.csproj" />
+    <Project Path="src/Modules/Atlas.Control.Modules.OrdersOperations/Atlas.Control.Modules.OrdersOperations.csproj" />
     <Project Path="src/Modules/Atlas.Control.Modules.Payments/Atlas.Control.Modules.Payments.csproj" />
     <Project Path="src/Modules/Atlas.Control.Modules.CatalogOperations/Atlas.Control.Modules.CatalogOperations.csproj" />
     <Project Path="src/Modules/Atlas.Control.Modules.OffersOperations/Atlas.Control.Modules.OffersOperations.csproj" />

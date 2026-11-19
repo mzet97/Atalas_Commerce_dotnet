@@ -66,6 +66,18 @@ builder.Services.AddSingleton<Atlas.Control.Modules.CatalogOperations.ICatalogOw
     builder.Configuration["CatalogOwner:Url"] ?? "http://127.0.0.1:5290"));
 builder.Services.AddSingleton<Atlas.Control.Modules.OffersOperations.IOffersOwnerCatalog>(_ => new GrpcOffersOwnerCatalog(
     builder.Configuration["OffersOwner:Url"] ?? "http://127.0.0.1:5297"));
+builder.Services.AddHttpClient("fulfillment", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Fulfillment:Url"] ?? "http://127.0.0.1:8080"));
+builder.Services.AddHttpClient("payments", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Payments:Url"] ?? "http://127.0.0.1:5398"));
+builder.Services.AddSingleton<Atlas.Control.Modules.Orders.IFulfillmentOrders>(sp =>
+    new HttpFulfillmentOrders(sp.GetRequiredService<IHttpClientFactory>().CreateClient("fulfillment")));
+builder.Services.AddSingleton<HttpPaymentsIntents>(sp =>
+    new HttpPaymentsIntents(sp.GetRequiredService<IHttpClientFactory>().CreateClient("payments")));
+builder.Services.AddSingleton<IAtlasModule>(sp => new Atlas.Control.Modules.Orders.OrdersOperationsModule(
+    sp.GetRequiredService<Atlas.Control.Modules.Orders.IFulfillmentOrders>(),
+    sp.GetRequiredService<AuditChainStore>(),
+    sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<IAtlasModule>(sp => new Atlas.Control.Modules.OffersOperations.OffersOperationsModule(
     sp.GetRequiredService<Atlas.Control.Modules.OffersOperations.IOffersOwnerCatalog>(),
     sp.GetRequiredService<AuditChainStore>()));
@@ -77,7 +89,9 @@ builder.Services.AddSingleton<IAtlasModule>(sp => new Atlas.Control.Modules.Cata
 builder.Services.AddSingleton<IInventoryStockOwner>(sp =>
     new GrpcInventoryOwnerDispatcher(sp.GetRequiredService<IConfiguration>()["InventoryOwner:Url"] ?? "http://127.0.0.1:5292"));
 builder.Services.AddSingleton<IAtlasModule>(sp => new RefundApprovalsModule(
-    sp.GetRequiredService<IConfiguration>()));
+    sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<AuditChainStore>(),
+    sp.GetRequiredService<HttpPaymentsIntents>()));
 builder.Services.AddSingleton<IAtlasModule>(sp => new InventoryOperationsModule(
     sp.GetRequiredService<OperationApprovalsStore>(),
     sp.GetRequiredService<AuditChainStore>(),
