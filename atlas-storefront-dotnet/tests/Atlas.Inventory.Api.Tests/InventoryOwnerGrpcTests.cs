@@ -92,13 +92,22 @@ public sealed class InventoryOwnerGrpcTests : IClassFixture<WebApplicationFactor
         var nf = await Assert.ThrowsAsync<RpcException>(() => client.ReceiveStockAsync(new ReceiveStockRequest
         {
             RequestId = "rcv-0", WarehouseId = wh.ToString(), SkuId = "sku-x", Quantity = 5, ActorSub = "op",
+            ApprovalToken = ReceiveToken(wh, "sku-x"),
         }).ResponseAsync);
         Assert.Equal(StatusCode.NotFound, nf.StatusCode);
+
+        // receive é operação de risco — SEM token → PermissionDenied (owner revalida)
+        var noTokenRcv = await Assert.ThrowsAsync<RpcException>(() => client.ReceiveStockAsync(new ReceiveStockRequest
+        {
+            RequestId = "rcv-x", WarehouseId = wh.ToString(), SkuId = "sku-x", Quantity = 5, ActorSub = "op",
+        }).ResponseAsync);
+        Assert.Equal(StatusCode.PermissionDenied, noTokenRcv.StatusCode);
 
         await SeedPositionAsync(wh, "sku-x");
         var receive = await client.ReceiveStockAsync(new ReceiveStockRequest
         {
             RequestId = "rcv-1", WarehouseId = wh.ToString(), SkuId = "sku-x", Quantity = 7, ActorSub = "op-1",
+            ApprovalToken = ReceiveToken(wh, "sku-x"),
         });
         Assert.True(receive.Accepted);
 
@@ -164,4 +173,13 @@ public sealed class InventoryOwnerGrpcTests : IClassFixture<WebApplicationFactor
             ["OnHand"] = 5, ["Reserved"] = 0, ["SafetyStock"] = 0, ["Version"] = 1,
         });
     }
+
+    private static string ReceiveToken(Guid wh, string sku) =>
+        Atlas.Inventory.Application.StockApprovalToken.Issue(
+            new Atlas.Inventory.Application.StockApprovalToken.Payload(
+                Sub: "approver-1", Action: "inventory.receive",
+                Subject: Atlas.Inventory.Application.StockApprovalToken.SubjectFor(wh.ToString(), sku),
+                ExpUnixSeconds: DateTimeOffset.UtcNow.AddSeconds(120).ToUnixTimeSeconds(),
+                Jti: Guid.NewGuid().ToString()),
+            secret: "atlas-dev-approval-secret");
 }

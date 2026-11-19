@@ -19,10 +19,23 @@ public sealed class InventoryOwnerGrpcService(MongoInventoryStore store, Invento
 
     public override async Task<ReceiveStockResponse> ReceiveStock(ReceiveStockRequest request, ServerCallContext context)
     {
-        var (key, position) = await EnsurePositionAsync(request.WarehouseId, request.SkuId, context);
-        position.Receive(request.Quantity);
-        await store.SavePositionAsync(key, position, context.CancellationToken);
-        return await LedgerResponseAsync(key, request.RequestId, context.CancellationToken);
+        // INV-SEC-001/INV-ADMIN-001: recebimento também é operação de risco — o owner
+        // REVALIDA o approval_token four-eyes (mesmo padrão do AdjustStock).
+        var subject = StockApprovalToken.SubjectFor(request.WarehouseId, request.SkuId);
+        var approval = StockApprovalToken.TryValidate(
+            request.ApprovalToken, TokenSecret, StockApprovalToken.ReceiveAction, subject,
+            DateTimeOffset.UtcNow, out var failure);
+        if (approval is null)
+            throw new RpcException(new Status(StatusCode.PermissionDenied, $"approval_token rejeitado: {failure}"));
+        if (request.Quantity <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "quantity deve ser > 0"));
+        var (key, _) = await EnsurePositionAsync(request.WarehouseId, request.SkuId, context);
+        var (ok, newVersion) = await store.ReceiveStockInTransactionAsync(
+            key, request.Quantity, request.Reason ?? "receive", request.CorrelationId ?? request.RequestId,
+            approval.Sub, context.CancellationToken);
+        if (!ok)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "recebimento não aplicado (posição removida ou corrida)"));
+        return new ReceiveStockResponse { Accepted = true, MovementId = request.RequestId, PositionVersion = newVersion };
     }
 
     public override async Task<AdjustStockResponse> AdjustStock(AdjustStockRequest request, ServerCallContext context)

@@ -10,15 +10,16 @@ public static class ProjectionSchema
 {
     public static async Task EnsureAsync(
         string pgConn, string catalogTable, string offersTable,
-        string positionsTable, string processedTable, CancellationToken ct)
+        string positionsTable, string processedTable, CancellationToken ct,
+        string ordersTable = "order_tracking_view")
     {
         await using var conn = new NpgsqlConnection(pgConn);
         await conn.OpenAsync(ct);
-        // Least-privilege (homelab: app_service = CRUD, sem DDL): se as 4 tabelas
+        // Least-privilege (homelab: app_service = CRUD, sem DDL): se as tabelas
         // já existem (migração db_admin/SET ROLE app_owner), pula o DDL — um SELECT
         // que o role de runtime sempre pode fazer. Sem as tabelas, o CREATE abaixo
         // falha alto (42501), sinalizando migração pendente em vez de mascarar.
-        var wanted = new[] { catalogTable, offersTable, positionsTable, processedTable };
+        var wanted = new[] { catalogTable, offersTable, positionsTable, processedTable, ordersTable };
         await using (var check = new NpgsqlCommand(
             "SELECT count(DISTINCT tablename) FROM pg_tables WHERE schemaname = ANY(current_schemas(false)) AND tablename = ANY(@names)", conn))
         {
@@ -34,6 +35,7 @@ public static class ProjectionSchema
             CREATE TABLE IF NOT EXISTS {offersTable}(offer_id uuid PRIMARY KEY, sku_id text, seller_id text, market_id text, channel text, currency text, price_minor bigint, status text, source_version bigint, projected_at timestamptz);
             CREATE TABLE IF NOT EXISTS {positionsTable}(position_key text PRIMARY KEY, sku_id text, on_hand int, reserved int, source_version bigint, projected_at timestamptz);
             CREATE TABLE IF NOT EXISTS {processedTable}(consumer_id text, event_id uuid, applied_at timestamptz DEFAULT now(), PRIMARY KEY(consumer_id, event_id));
+            CREATE TABLE IF NOT EXISTS {ordersTable}(order_id uuid PRIMARY KEY, customer_sub text, status text, total_minor bigint, currency text, source_version bigint, projected_at timestamptz);
             """, conn);
         await cmd.ExecuteNonQueryAsync(ct);
     }

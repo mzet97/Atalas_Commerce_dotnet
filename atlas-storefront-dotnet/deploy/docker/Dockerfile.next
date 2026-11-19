@@ -7,6 +7,14 @@ FROM node:22-slim AS build
 # (runtime não reavalia next.config). Para o cluster: --build-arg BFF_URL=http://atlas-gateway
 ARG BFF_URL=http://127.0.0.1:5180
 ENV BFF_URL=${BFF_URL}
+# NEXT_PUBLIC_* também são assados no bundle client-side (login OIDC do buyer).
+# Sem isso, o browser tenta Keycloak em 127.0.0.1 e o login nunca completa no deploy.
+ARG NEXT_PUBLIC_KEYCLOAK_URL=https://keycloak.home.arpa
+ARG NEXT_PUBLIC_KEYCLOAK_REALM=atlas
+ARG NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=storefront
+ENV NEXT_PUBLIC_KEYCLOAK_URL=${NEXT_PUBLIC_KEYCLOAK_URL}
+ENV NEXT_PUBLIC_KEYCLOAK_REALM=${NEXT_PUBLIC_KEYCLOAK_REALM}
+ENV NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID}
 RUN corepack enable
 WORKDIR /app
 COPY atlas-storefront-dotnet/apps/storefront-next/package.json atlas-storefront-dotnet/apps/storefront-next/pnpm-lock.yaml ./

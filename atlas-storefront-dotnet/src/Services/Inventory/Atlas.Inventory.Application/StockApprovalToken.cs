@@ -14,6 +14,7 @@ namespace Atlas.Inventory.Application;
 public static class StockApprovalToken
 {
     public const string AdjustAction = "inventory.adjust";
+    public const string ReceiveAction = "inventory.receive";
 
     public sealed record Payload(
         [property: System.Text.Json.Serialization.JsonPropertyName("sub")] string Sub,

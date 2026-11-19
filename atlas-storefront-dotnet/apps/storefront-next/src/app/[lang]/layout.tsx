@@ -30,9 +30,16 @@ export default async function LangLayout({
   const locale = lang as Locale;
   const t = getTranslator(locale);
 
+  // URL pública do Keycloak para o browser (runtime por request; sem rebuild por ambiente).
+  const keycloakUrl = process.env.KEYCLOAK_URL ?? "https://keycloak.home.arpa";
   return (
     <html lang={locale}>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__KEYCLOAK_URL=${JSON.stringify(keycloakUrl)};`,
+          }}
+        />
         <header className="ml-top">
           <div className="ml-top-inner">
             <Link href={`/${locale}`} className="brand" data-testid="brand">
@@ -43,6 +50,9 @@ export default async function LangLayout({
               labels={{ placeholder: t("search.placeholder"), button: t("search.button"), all: t("search.facets.all") }}
             />
             <nav className="ml-account" aria-label={t("nav.cart")}>
+              <Link href={`/${locale}/pedidos`} data-testid="nav-orders">
+                {t("nav.orders")}
+              </Link>
               <Link href={`/${locale}/login`} data-testid="nav-login">
                 {t("nav.login")}
               </Link>

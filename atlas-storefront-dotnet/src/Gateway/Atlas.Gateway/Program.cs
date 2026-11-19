@@ -235,6 +235,44 @@ app.MapGet("/api/catalog/products/{productId:guid}", async (Guid productId, Canc
     return Results.Ok(new { productId, title, marketId, status, sourceVersion = version, skus, images, offers, availabilityHint = availability });
 });
 
+// ---- Meus pedidos (vitrine): leitura da view order_tracking_view, sempre filtrada
+// pelo subject do Bearer (INV-SEC-001). Sem token → 401; pedido alheio → 404.
+app.MapGet("/api/orders/mine", async (HttpContext http) =>
+{
+    string? subject;
+    try { subject = await AuthenticatedSubjectAsync(http); }
+    catch (UnauthorizedAccessException) { return Results.Json(new { error = "token inválido ou expirado" }, statusCode: 401); }
+    if (string.IsNullOrWhiteSpace(subject)) return Results.Json(new { error = "login necessário" }, statusCode: 401);
+    await using var conn = new NpgsqlConnection(pgConn);
+    await conn.OpenAsync(http.RequestAborted);
+    await using var cmd = new NpgsqlCommand(
+        "SELECT order_id, status, total_minor, currency, source_version FROM order_tracking_view WHERE customer_sub = @sub ORDER BY projected_at DESC LIMIT 50", conn);
+    cmd.Parameters.AddWithValue("sub", subject);
+    var items = new List<object>();
+    await using (var r = await cmd.ExecuteReaderAsync(http.RequestAborted))
+        while (await r.ReadAsync(http.RequestAborted))
+            items.Add(new { orderId = r.GetGuid(0), status = r.GetString(1), totalMinor = r.GetInt64(2), currency = r.GetString(3), sourceVersion = r.GetInt64(4) });
+    return Results.Ok(new { items, total = items.Count });
+});
+
+app.MapGet("/api/orders/{orderId:guid}", async (HttpContext http, Guid orderId) =>
+{
+    string? subject;
+    try { subject = await AuthenticatedSubjectAsync(http); }
+    catch (UnauthorizedAccessException) { return Results.Json(new { error = "token inválido ou expirado" }, statusCode: 401); }
+    if (string.IsNullOrWhiteSpace(subject)) return Results.Json(new { error = "login necessário" }, statusCode: 401);
+    await using var conn = new NpgsqlConnection(pgConn);
+    await conn.OpenAsync(http.RequestAborted);
+    // ownership no SQL: pedido de outro subject = 404 (não vaza existência).
+    await using var cmd = new NpgsqlCommand(
+        "SELECT order_id, status, total_minor, currency, source_version FROM order_tracking_view WHERE order_id = @id AND customer_sub = @sub", conn);
+    cmd.Parameters.AddWithValue("id", orderId);
+    cmd.Parameters.AddWithValue("sub", subject);
+    await using var r = await cmd.ExecuteReaderAsync(http.RequestAborted);
+    if (!await r.ReadAsync(http.RequestAborted)) return Results.NotFound();
+    return Results.Ok(new { orderId = r.GetGuid(0), status = r.GetString(1), totalMinor = r.GetInt64(2), currency = r.GetString(3), sourceVersion = r.GetInt64(4) });
+});
+
 // ---- M5: forwarder explícito /api/checkout/** → Checkout.Api (borda única da vitrine) ----
 // fatia 9: com Bearer válido, propaga X-Authenticated-Subject (INV-SEC-001: subject
 // autenticado, nunca auto-assertado); sem token mantém passthrough anônimo (M3 compat);

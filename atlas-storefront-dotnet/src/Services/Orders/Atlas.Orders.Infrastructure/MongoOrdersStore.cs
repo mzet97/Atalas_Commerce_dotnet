@@ -59,9 +59,22 @@ public sealed partial class MongoOrdersStore
             var result = await Orders().UpdateOneAsync(s, filter, update, cancellationToken: token);
             if (result.ModifiedCount != 1) return false; // duplicado/fora de ordem: NÃO avança (INV-ORDER-002)
 
+            // Payload enriquecido para a projeção de tracking (customer/total/estado/versão);
+            // leitura do próprio doc dentro da txn (read-your-writes, sem corrida).
+            var doc = await Orders().Find(s, o => o.Id == orderId).FirstOrDefaultAsync(cancellationToken: token);
+            if (doc is null) return false;
             await Outbox().InsertOneAsync(s, OutboxDoc.DomainEvent(
                 Guid.NewGuid(), eventType, orderId.ToString(), correlationId,
-                new BsonDocument { ["order_id"] = orderId.ToString(), ["reason"] = reason ?? "" }), cancellationToken: token);
+                new BsonDocument
+                {
+                    ["order_id"] = orderId.ToString(),
+                    ["customer_id"] = doc.CustomerId,
+                    ["state"] = doc.State.ToString(),
+                    ["total_minor"] = doc.TotalMinor,
+                    ["currency"] = doc.Currency,
+                    ["reason"] = reason ?? "",
+                    ["aggregate_version"] = doc.Version,
+                }, doc.Version), cancellationToken: token);
             return true;
         }, cancellationToken: ct);
     }
@@ -107,9 +120,10 @@ public sealed partial class MongoOrdersStore
         public BsonDocument Payload { get; set; } = default!;
         public DateTimeOffset OccurredAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
-        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload) => new()
+        public static OutboxDoc DomainEvent(Guid eventId, string eventType, string aggregateId, string correlationId, BsonDocument payload, long aggregateVersion = 1) => new()
         {
             Id = eventId, EventType = eventType, AggregateId = aggregateId, CorrelationId = correlationId, Payload = payload,
+            AggregateVersion = aggregateVersion,
         };
     }
 }

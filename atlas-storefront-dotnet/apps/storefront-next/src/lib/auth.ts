@@ -14,14 +14,27 @@ export type BuyerSession = {
 const LS_KEY = "atlas.buyer.v1";
 const LS_VERIFIER = "atlas.pkce.v1";
 
+function runtimeBase(): string | null {
+  // Injetado pelo layout (server) a cada request: URL pública do deploy.
+  if (typeof window !== "undefined") {
+    const w = window as unknown as { __KEYCLOAK_URL?: string };
+    if (w.__KEYCLOAK_URL) return w.__KEYCLOAK_URL;
+  }
+  return null;
+}
+
 function keycloakBase(): string {
-  return process.env.NEXT_PUBLIC_KEYCLOCK_URL ?? "http://127.0.0.1:8080";
+  return (
+    runtimeBase() ??
+    process.env.NEXT_PUBLIC_KEYCLOAK_URL ??
+    "http://127.0.0.1:8080"
+  );
 }
 function realm(): string {
-  return process.env.NEXT_PUBLIC_KEYCLOCK_REALM ?? "atlas";
+  return process.env.NEXT_PUBLIC_KEYCLOAK_REALM ?? "atlas";
 }
 function clientId(): string {
-  return process.env.NEXT_PUBLIC_KEYCLOCK_CLIENT_ID ?? "storefront";
+  return process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID ?? "storefront-next";
 }
 
 function randomVerifier(): string {
